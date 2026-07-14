@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from guolaicode.cache import FileCache
-from guolaicode.config import WorktreeConfig, load_config
-from guolaicode.worktree.changes import count_worktree_changes, has_worktree_changes
-from guolaicode.worktree.integration import build_worktree_notice, generate_worktree_name
-from guolaicode.worktree.manager import WorktreeError, WorktreeManager
-from guolaicode.worktree.models import WorktreeSession
-from guolaicode.worktree.session import load_worktree_session, save_worktree_session
-from guolaicode.worktree.slug import flatten_slug, validate_slug
+from gcode.cache import FileCache
+from gcode.config import WorktreeConfig, load_config
+from gcode.worktree.changes import count_worktree_changes, has_worktree_changes
+from gcode.worktree.integration import build_worktree_notice, generate_worktree_name
+from gcode.worktree.manager import WorktreeError, WorktreeManager
+from gcode.worktree.models import WorktreeSession
+from gcode.worktree.session import load_worktree_session, save_worktree_session
+from gcode.worktree.slug import flatten_slug, validate_slug
 
 # =========================================================================
 # A. Slug 校验

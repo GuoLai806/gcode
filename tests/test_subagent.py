@@ -10,24 +10,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from guolaicode.agents.parser import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
-from guolaicode.agents.loader import AgentLoader
-from guolaicode.agents.tool_filter import (
+from gcode.agents.parser import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
+from gcode.agents.loader import AgentLoader
+from gcode.agents.tool_filter import (
     ALL_AGENT_DISALLOWED_TOOLS,
     ASYNC_AGENT_ALLOWED_TOOLS,
     resolve_agent_tools,
 )
-from guolaicode.agents.fork import (
+from gcode.agents.fork import (
     FORK_BOILERPLATE_TAG,
     ForkError,
     build_forked_messages,
 )
-from guolaicode.agents.trace import TraceManager, TraceNode
-from guolaicode.agents.task_manager import BackgroundTask, TaskManager
-from guolaicode.agents.notification import format_task_notification, inject_task_notifications
-from guolaicode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
-from guolaicode.tools import ToolRegistry
-from guolaicode.tools.base import Tool, ToolResult
+from gcode.agents.trace import TraceManager, TraceNode
+from gcode.agents.task_manager import BackgroundTask, TaskManager
+from gcode.agents.notification import format_task_notification, inject_task_notifications
+from gcode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
+from gcode.tools import ToolRegistry
+from gcode.tools.base import Tool, ToolResult
 
 # =====================================================================
 # 辅助函数
@@ -204,7 +204,7 @@ class TestAgentLoader:
         assert "Verification" in agents
 
     def test_project_overrides_builtin(self, tmp_path: Path):
-        agents_dir = tmp_path / ".guolaicode" / "agents"
+        agents_dir = tmp_path / ".gcode" / "agents"
         agents_dir.mkdir(parents=True)
         custom_md = make_agent_md(
             name="Explore",
@@ -240,7 +240,7 @@ class TestAgentLoader:
         assert "general-purpose" in names
 
     def test_hot_reload(self, tmp_path: Path):
-        agents_dir = tmp_path / ".guolaicode" / "agents"
+        agents_dir = tmp_path / ".gcode" / "agents"
         agents_dir.mkdir(parents=True)
         f = agents_dir / "custom.md"
         f.write_text(make_agent_md(name="custom", description="v1"))
@@ -253,7 +253,7 @@ class TestAgentLoader:
         assert loader.get("custom").when_to_use == "v2"
 
     def test_bad_file_skipped(self, tmp_path: Path):
-        agents_dir = tmp_path / ".guolaicode" / "agents"
+        agents_dir = tmp_path / ".gcode" / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "bad.md").write_text("no frontmatter")
         (agents_dir / "good.md").write_text(
@@ -647,7 +647,7 @@ class TestNotification:
 
 class TestConfig:
     def test_enable_fork_default(self, tmp_path: Path):
-        from guolaicode.config import load_config
+        from gcode.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -661,7 +661,7 @@ class TestConfig:
         assert config.enable_verification_agent is False
 
     def test_enable_fork_true(self, tmp_path: Path):
-        from guolaicode.config import load_config
+        from gcode.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -682,7 +682,7 @@ class TestConfig:
 
 class TestPermissionMode:
     def test_dont_ask_mode(self):
-        from guolaicode.permissions.modes import PermissionMode, mode_decide
+        from gcode.permissions.modes import PermissionMode, mode_decide
         assert PermissionMode.DONT_ASK.value == "dontAsk"
         assert mode_decide(PermissionMode.DONT_ASK, "read") == "allow"
         assert mode_decide(PermissionMode.DONT_ASK, "write") == "allow"
@@ -694,14 +694,14 @@ class TestPermissionMode:
 
 class TestAgentToolParams:
     def test_required_fields(self):
-        from guolaicode.tools.agent_tool import AgentToolParams
+        from gcode.tools.agent_tool import AgentToolParams
         params = AgentToolParams(prompt="do this", description="test")
         assert params.prompt == "do this"
         assert params.subagent_type is None
         assert params.run_in_background is False
 
     def test_optional_fields(self):
-        from guolaicode.tools.agent_tool import AgentToolParams
+        from gcode.tools.agent_tool import AgentToolParams
         params = AgentToolParams(
             prompt="do",
             description="test",
@@ -723,7 +723,7 @@ class TestAgentToolParams:
 
 class TestAgentExtensions:
     def test_agent_has_id(self):
-        from guolaicode.agent import Agent
+        from gcode.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")
@@ -733,7 +733,7 @@ class TestAgentExtensions:
         assert agent.trace_id is None
 
     def test_agent_catalog(self):
-        from guolaicode.agent import Agent
+        from gcode.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")

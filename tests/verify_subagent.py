@@ -15,20 +15,20 @@ from pathlib import Path
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from guolaicode.agents.loader import AgentLoader
-from guolaicode.agents.tool_filter import (
+from gcode.agents.loader import AgentLoader
+from gcode.agents.tool_filter import (
     ALL_AGENT_DISALLOWED_TOOLS,
     ASYNC_AGENT_ALLOWED_TOOLS,
     resolve_agent_tools,
 )
-from guolaicode.agents.fork import FORK_BOILERPLATE_TAG, ForkError, build_forked_messages
-from guolaicode.agents.trace import TraceManager
-from guolaicode.agents.task_manager import TaskManager
-from guolaicode.agents.notification import format_task_notification, inject_task_notifications
-from guolaicode.conversation import ConversationManager, ToolUseBlock
-from guolaicode.tools import ToolRegistry
-from guolaicode.tools.base import Tool, ToolResult
-from guolaicode.config import load_config
+from gcode.agents.fork import FORK_BOILERPLATE_TAG, ForkError, build_forked_messages
+from gcode.agents.trace import TraceManager
+from gcode.agents.task_manager import TaskManager
+from gcode.agents.notification import format_task_notification, inject_task_notifications
+from gcode.conversation import ConversationManager, ToolUseBlock
+from gcode.tools import ToolRegistry
+from gcode.tools.base import Tool, ToolResult
+from gcode.config import load_config
 
 PASS = "\033[32m✓\033[0m"
 FAIL = "\033[31m✗\033[0m"
@@ -203,7 +203,7 @@ def verify_tool_filter(loader: AgentLoader):
         check("L3: 后台所有工具都在白名单中", True)
 
     # 白名单+黑名单组合
-    from guolaicode.agents.parser import AgentDef
+    from gcode.agents.parser import AgentDef
     combo = AgentDef(
         agent_type="combo",
         when_to_use="test",
@@ -359,7 +359,7 @@ async def verify_task_manager():
 # ---------------------------------------------------------------------------
 def verify_notification():
     print("\n== 6. task-notification 通知 ==")
-    from guolaicode.agents.task_manager import BackgroundTask
+    from gcode.agents.task_manager import BackgroundTask
 
     bg = BackgroundTask(
         id="abc123",
@@ -407,7 +407,7 @@ def verify_config():
 # ---------------------------------------------------------------------------
 def verify_permission():
     print("\n== 8. DONT_ASK 权限模式 ==")
-    from guolaicode.permissions.modes import PermissionMode, mode_decide
+    from gcode.permissions.modes import PermissionMode, mode_decide
 
     check("DONT_ASK 枚举值", PermissionMode.DONT_ASK.value == "dontAsk")
     check("DONT_ASK read=allow", mode_decide(PermissionMode.DONT_ASK, "read") == "allow")
@@ -419,7 +419,7 @@ def verify_permission():
 # ---------------------------------------------------------------------------
 def verify_agent_fields():
     print("\n== 9. Agent 扩展字段 ==")
-    from guolaicode.agent import Agent
+    from gcode.agent import Agent
     from unittest.mock import MagicMock
 
     agent = Agent(
@@ -439,7 +439,7 @@ def verify_agent_fields():
 # ---------------------------------------------------------------------------
 def verify_agent_tool():
     print("\n== 10. AgentTool 参数与 schema ==")
-    from guolaicode.tools.agent_tool import AgentTool, AgentToolParams
+    from gcode.tools.agent_tool import AgentTool, AgentToolParams
 
     params = AgentToolParams(
         prompt="探索项目结构",

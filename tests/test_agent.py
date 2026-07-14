@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from guolaicode.agent import (
+from gcode.agent import (
     Agent,
     ErrorEvent,
     LoopComplete,
@@ -19,12 +19,12 @@ from guolaicode.agent import (
     UsageEvent,
     partition_tool_calls,
 )
-from guolaicode.prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
-from guolaicode.client import LLMClient
-from guolaicode.conversation import ConversationManager
-from guolaicode.serialization import build_anthropic_messages
-from guolaicode.tools import create_default_registry
-from guolaicode.tools.base import (
+from gcode.prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
+from gcode.client import LLMClient
+from gcode.conversation import ConversationManager
+from gcode.serialization import build_anthropic_messages
+from gcode.tools import create_default_registry
+from gcode.tools.base import (
     StreamEnd,
     StreamEvent,
     TextDelta,
@@ -124,13 +124,13 @@ async def test_multi_step_autonomous():
         # 第 1 轮：WriteFile
         [
             TextDelta("Creating file."),
-            ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/GuoLaiCode_test_hello.txt", "content": "Hello World"}),
+            ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/GCode_test_hello.txt", "content": "Hello World"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=20),
         ],
         # 第 2 轮：ReadFile 进行验证
         [
             TextDelta("Verifying content."),
-            ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/GuoLaiCode_test_hello.txt"}),
+            ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/GCode_test_hello.txt"}),
             StreamEnd("end_turn", input_tokens=40, output_tokens=25),
         ],
         # 第 3 轮：最终答案
@@ -389,7 +389,7 @@ async def test_token_usage_accumulates():
 @pytest.mark.asyncio
 async def test_plan_mode():
     """通过 permission_mode 切换 plan 模式。"""
-    from guolaicode.permissions import PermissionMode
+    from gcode.permissions import PermissionMode
 
     registry = create_default_registry()
     agent = Agent(MockLLMClient([]), registry, "anthropic")
@@ -409,7 +409,7 @@ async def test_plan_mode():
 async def test_plan_mode_denied_tool_returns_error():
     """在 plan 模式下，写入类工具需要审批（effect=ask）；当用户
     拒绝时，工具返回一个错误结果，而不会真正执行。"""
-    from guolaicode.permissions import (
+    from gcode.permissions import (
         DangerousCommandDetector,
         PathSandbox,
         PermissionChecker,
@@ -455,7 +455,7 @@ async def test_plan_mode_denied_tool_returns_error():
 
 def test_partition_tool_calls():
     """分批逻辑会把可并发执行的调用归到同一组。"""
-    from guolaicode.tools.base import ToolCallComplete
+    from gcode.tools.base import ToolCallComplete
 
     calls = [
         ToolCallComplete("1", "ReadFile", {}),
@@ -473,7 +473,7 @@ def test_partition_tool_calls():
 
 def test_system_prompt_normal():
     sp = build_system_prompt()
-    assert "guolaicode" in sp
+    assert "gcode" in sp
     assert "Plan mode" not in sp
 
 def test_system_prompt_plan():

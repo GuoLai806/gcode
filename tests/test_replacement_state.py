@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from guolaicode.context.manager import (
+from gcode.context.manager import (
     AGGREGATE_CHAR_LIMIT,
     PERSISTED_TAG,
     REPLACEMENT_RECORDS_FILENAME,
@@ -17,7 +17,7 @@ from guolaicode.context.manager import (
     load_replacement_records,
     reconstruct_replacement_state,
 )
-from guolaicode.conversation import ConversationManager, Message, ToolResultBlock
+from gcode.conversation import ConversationManager, Message, ToolResultBlock
 
 def _one_msg_conv(*results: ToolResultBlock) -> ConversationManager:
     conv = ConversationManager()

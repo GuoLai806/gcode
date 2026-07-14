@@ -1,4 +1,4 @@
-# GuoLaiCode - 终端 AI 编程助手
+# GCode - 终端 AI 编程助手
 
 一个功能丰富、架构清晰的终端 AI 编码助手，从零构建，深度学习 Agent 架构。
 
@@ -51,8 +51,8 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/guolaicode.git
-cd guolaicode
+git clone https://github.com/your-repo/gcode.git
+cd gcode
 
 # 创建虚拟环境（推荐）
 python -m venv venv
@@ -63,12 +63,12 @@ source venv/bin/activate  # Linux/macOS
 pip install -e .
 
 # 验证安装
-guolaicode --help
+gcode --help
 ```
 
 ### 配置
 
-编辑 `~/.guolaicode/config.yaml`：
+编辑 `~/.gcode/config.yaml`：
 
 ```yaml
 providers:
@@ -85,7 +85,7 @@ permission_mode: default  # default / accept-edits / plan / bypass
 
 ```bash
 # 启动交互式终端
-guolaicode
+gcode
 ```
 
 ## 架构设计
@@ -136,7 +136,7 @@ async def run(self, conversation) -> AsyncIterator[AgentEvent]:
 ### 目录结构
 
 ```
-guolaicode/
+gcode/
 ├── agent.py              # Agent 核心逻辑与主循环
 ├── app.py                # Textual TUI 应用入口
 ├── client.py             # LLM 客户端适配
@@ -202,45 +202,45 @@ guolaicode/
 ## 核心模块详解
 
 ### 1. Agent Loop 与 ReAct 范式
-- **文件**: `guolaicode/agent.py`
+- **文件**: `gcode/agent.py`
 - **原理**: 基于 ReAct（Reasoning + Acting）范式的自主循环
 - **特点**: async generator 事件流驱动、StreamCollector 解耦流消费逻辑、4 种停止条件
 
 ### 2. 工具注册与执行框架
-- **目录**: `guolaicode/tools/`
+- **目录**: `gcode/tools/`
 - **设计**: ABC 抽象基类 + Pydantic 参数校验、Schema 自动生成、Registry 注册中心
 
 ### 3. 五层权限防御链
-- **目录**: `guolaicode/permissions/`
+- **目录**: `gcode/permissions/`
 - **层级**: Plan Mode 例外 -> 安全白名单 -> 危险黑名单 -> PathSandbox -> 规则引擎 -> HITL 确认
 
 ### 4. 上下文压缩与溢写
-- **文件**: `guolaicode/context/manager.py`
+- **文件**: `gcode/context/manager.py`
 - **策略**: Layer 1 单条 >50KB 存盘 + Layer 2 Auto-Compact 摘要旧消息
 
 ### 5. 多 Agent 团队协作
-- **目录**: `guolaicode/teams/`
+- **目录**: `gcode/teams/`
 - **模式**: SubAgent 星型拓扑 + Agent Team 网状结构
 - **后端**: Tmux / iTerm2 / In-process 自动检测
 
 ### 6. System Prompt 组装管线
-- **文件**: `guolaicode/prompts/system_prompt.py`
+- **文件**: `gcode/prompts/system_prompt.py`
 - **结构**: 7 段固定段落 + 3 段条件段落 + Hook 注入
 
 ### 7. MCP 协议集成
-- **目录**: `guolaicode/mcp/`
+- **目录**: `gcode/mcp/`
 - **支持**: stdio 和 streamable HTTP 两种传输模式
 
 ### 8. 技能系统（Skill）
-- **目录**: `guolaicode/skills/`
+- **目录**: `gcode/skills/`
 - **模式**: inline（直接执行）/ fork（子进程执行）
 
 ## 配置说明
 
 ### 配置文件位置
-- 全局配置：`~/.guolaicode/config.yaml`
-- 项目配置：`.guolaicode/config.yaml`（项目根目录）
-- 本地权限规则：`.guolaicode/permissions.local.yaml`
+- 全局配置：`~/.gcode/config.yaml`
+- 项目配置：`.gcode/config.yaml`（项目根目录）
+- 本地权限规则：`.gcode/permissions.local.yaml`
 
 ### 完整配置示例
 

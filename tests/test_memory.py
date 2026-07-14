@@ -7,19 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from guolaicode.conversation import (
+from gcode.conversation import (
     ConversationManager,
     Message,
     ToolResultBlock,
     ToolUseBlock,
 )
-from guolaicode.memory.auto_memory import MemoryManager
-from guolaicode.memory.instructions import (
+from gcode.memory.auto_memory import MemoryManager
+from gcode.memory.instructions import (
     MAX_INCLUDE_DEPTH,
     load_instructions,
     process_includes,
 )
-from guolaicode.memory.session import (
+from gcode.memory.session import (
     RecordType,
     ResumeResult,
     Session,
@@ -34,7 +34,7 @@ from guolaicode.memory.session import (
 )
 
 # =========================================================================
-# A. 指令文件（GuoLaiCode.md）
+# A. 指令文件（GCode.md）
 # =========================================================================
 
 class TestProcessIncludes:
@@ -78,17 +78,17 @@ class TestProcessIncludes:
 
 class TestLoadInstructions:
     def test_single_layer(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        GuoLaiCode_md = tmp_path / "GuoLaiCode.md"
-        GuoLaiCode_md.write_text("project instructions", encoding="utf-8")
+        GCode_md = tmp_path / "GCode.md"
+        GCode_md.write_text("project instructions", encoding="utf-8")
         result = load_instructions(str(tmp_path))
         assert "project instructions" in result
 
     def test_multi_layer_priority(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        root_md = tmp_path / "GuoLaiCode.md"
+        root_md = tmp_path / "GCode.md"
         root_md.write_text("root level", encoding="utf-8")
-        dotdir = tmp_path / ".guolaicode"
+        dotdir = tmp_path / ".gcode"
         dotdir.mkdir()
-        dot_md = dotdir / "GuoLaiCode.md"
+        dot_md = dotdir / "GCode.md"
         dot_md.write_text("dotdir level", encoding="utf-8")
         result = load_instructions(str(tmp_path))
         assert result.index("root level") < result.index("dotdir level")
@@ -162,7 +162,7 @@ class TestSessionRecord:
 
 class TestSession:
     def test_append_writes_jsonl_and_updates_meta(self, tmp_path: Path) -> None:
-        sessions_dir = tmp_path / ".guolaicode" / "sessions"
+        sessions_dir = tmp_path / ".gcode" / "sessions"
         sessions_dir.mkdir(parents=True)
         meta = SessionMeta(id="test_session")
         meta.save(sessions_dir / "test_session.meta")
@@ -179,7 +179,7 @@ class TestSession:
         assert meta.title == "hello"
 
     def test_title_set_from_first_user_message(self, tmp_path: Path) -> None:
-        sessions_dir = tmp_path / ".guolaicode" / "sessions"
+        sessions_dir = tmp_path / ".gcode" / "sessions"
         sessions_dir.mkdir(parents=True)
         meta = SessionMeta(id="test_session")
         jsonl_path = sessions_dir / "test_session.jsonl"
@@ -587,11 +587,11 @@ class TestMemoryManager:
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
-        user_mem = fake_home / ".guolaicode" / "memories.md"
+        user_mem = fake_home / ".gcode" / "memories.md"
         user_mem.parent.mkdir(parents=True)
         user_mem.write_text("### 用户偏好\n- prefer spaces", encoding="utf-8")
 
-        project_mem = tmp_path / "project" / ".guolaicode" / "memories.md"
+        project_mem = tmp_path / "project" / ".gcode" / "memories.md"
         project_mem.parent.mkdir(parents=True)
         project_mem.write_text("### 项目知识\n- uses PostgreSQL", encoding="utf-8")
 
@@ -605,11 +605,11 @@ class TestMemoryManager:
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
-        user_mem = fake_home / ".guolaicode" / "memories.md"
+        user_mem = fake_home / ".gcode" / "memories.md"
         user_mem.parent.mkdir(parents=True)
         user_mem.write_text("### 用户偏好\n- something", encoding="utf-8")
 
-        project_mem = tmp_path / "project" / ".guolaicode" / "memories.md"
+        project_mem = tmp_path / "project" / ".gcode" / "memories.md"
         project_mem.parent.mkdir(parents=True)
         project_mem.write_text("### 项目知识\n- something", encoding="utf-8")
 
@@ -660,7 +660,7 @@ class TestConversationInjection:
         assert len(conv.history) == 2
         assert conv.history[0].content == "env info"
         assert "<system-reminder>" in conv.history[1].content
-        assert "GuoLaiCodeMd" in conv.history[1].content
+        assert "GCodeMd" in conv.history[1].content
         assert "project rules" in conv.history[1].content
         assert "autoMemory" in conv.history[1].content
         assert "user prefs" in conv.history[1].content
@@ -678,7 +678,7 @@ class TestConversationInjection:
         conv.inject_long_term_memory("rules", "")
         assert len(conv.history) == 1
         assert "<system-reminder>" in conv.history[0].content
-        assert "GuoLaiCodeMd" in conv.history[0].content
+        assert "GCodeMd" in conv.history[0].content
         assert "rules" in conv.history[0].content
 
     def test_inject_memories_only(self) -> None:
@@ -708,7 +708,7 @@ class TestConversationInjection:
 
 class TestMemoryExtraction:
     def test_extraction_prompt_contains_categories(self, tmp_path: Path) -> None:
-        from guolaicode.memory.auto_memory import MEMORY_EXTRACTION_PROMPT
+        from gcode.memory.auto_memory import MEMORY_EXTRACTION_PROMPT
 
         assert "用户偏好" in MEMORY_EXTRACTION_PROMPT
         assert "纠正反馈" in MEMORY_EXTRACTION_PROMPT

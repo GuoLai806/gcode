@@ -1,5 +1,5 @@
 # 敏感配置目录（包含 API key，绝对不能提交）
-.guolaicode/
+.gcode/
 
 # 文档目录（内部资料，不公开）
 files/
