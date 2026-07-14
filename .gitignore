@@ -3,6 +3,7 @@
 
 # 文档目录（内部资料，不公开）
 files/
+gcodefile/
 
 # Python
 __pycache__/
