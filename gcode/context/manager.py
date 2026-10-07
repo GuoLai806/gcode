@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
@@ -776,7 +777,7 @@ async def auto_compact(
         Message(role="user", content=SUMMARY_PROMPT),
     ]
     # 只摘要前缀；保留的尾部在下面重建时原样拼回。
-    for msg in to_summarize:
+    for msg in copy.deepcopy(to_summarize):
         summary_conv.history.append(msg)
     summary_conv.history.append(
         Message(role="user", content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。")

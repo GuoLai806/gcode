@@ -425,14 +425,36 @@ class Agent:
         ]
 
     async def run(self, conversation: ConversationManager) -> AsyncIterator[AgentEvent]:
-        self._current_conversation = conversation
-        env_context = build_environment_context(
-            self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
+        conversation.repair_tool_chain()
+        stream = self._run(conversation)
+        try:
+            async for event in stream:
+                yield event
+        finally:
+            try:
+                await stream.aclose()
+            finally:
+                conversation.repair_tool_chain()
+
+    def prepare_conversation(self, conversation: ConversationManager) -> str:
+        """Inject the initial context before the UI takes its persistence cursor."""
+        conversation.repair_tool_chain()
+        env_context = (
+            conversation.history[0].content
+            if conversation.env_injected and conversation.history
+            else build_environment_context(
+                self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
+            )
         )
         conversation.inject_environment(env_context)
 
         memory_content = self.memory_manager.load() if self.memory_manager else ""
         conversation.inject_long_term_memory(self.instructions_content, memory_content)
+        return env_context
+
+    async def _run(self, conversation: ConversationManager) -> AsyncIterator[AgentEvent]:
+        self._current_conversation = conversation
+        env_context = self.prepare_conversation(conversation)
 
         if self.hook_engine:
             ctx = self._build_hook_context("session_start")
@@ -544,8 +566,13 @@ class Agent:
 
             collector = StreamCollector()
             llm_stream = self.client.stream(api_conv, system=system, tools=tools)
-            async for event in collector.consume(llm_stream):
-                yield event
+            collected_stream = collector.consume(llm_stream)
+            try:
+                async for event in collected_stream:
+                    yield event
+            finally:
+                await collected_stream.aclose()
+                await llm_stream.aclose()
 
             response = collector.response
 
@@ -642,26 +669,27 @@ class Agent:
             )
 
             tool_results: list[ToolResultBlock] = []
+            # Keep partial successes in history even if a later call is cancelled.
+            conversation.add_tool_results_message(tool_results)
             batches = partition_tool_calls(response.tool_calls, self.registry)
+
+            def record_parallel_result(br: _ToolExecResult) -> None:
+                tool_results.append(ToolResultBlock(
+                    tool_use_id=br.tool_id,
+                    content=self._maybe_persist_or_truncate(br.tool_id, br.result.output),
+                    is_error=br.result.is_error,
+                ))
 
             for batch in batches:
                 if batch.concurrent and len(batch.calls) > 1:
-                    batch_results = await self._execute_batch_parallel(batch.calls)
+                    batch_results = await self._execute_batch_parallel(
+                        batch.calls, on_result=record_parallel_result
+                    )
                     for br in batch_results:
                         if br.is_unknown:
                             consecutive_unknown += 1
                         else:
                             consecutive_unknown = 0
-                        content = self._maybe_persist_or_truncate(
-                            br.tool_id, br.result.output
-                        )
-                        tool_results.append(
-                            ToolResultBlock(
-                                tool_use_id=br.tool_id,
-                                content=content,
-                                is_error=br.result.is_error,
-                            )
-                        )
                         yield ToolResultEvent(
                             tool_id=br.tool_id,
                             tool_name=br.tool_name,
@@ -724,6 +752,16 @@ class Agent:
                         else:
                             consecutive_unknown = 0
 
+                        content = self._maybe_persist_or_truncate(
+                            tc.tool_id, result.output
+                        )
+                        tool_results.append(
+                            ToolResultBlock(
+                                tool_use_id=tc.tool_id,
+                                content=content,
+                                is_error=result.is_error,
+                            )
+                        )
                         if self.hook_engine:
                             file_path = self._infer_file_path(tc.arguments)
                             hook_ctx = self._build_hook_context(
@@ -735,17 +773,6 @@ class Agent:
                             await self.hook_engine.run_hooks("post_tool_use", hook_ctx)
                             for he in self._drain_hook_events():
                                 yield he
-
-                        content = self._maybe_persist_or_truncate(
-                            tc.tool_id, result.output
-                        )
-                        tool_results.append(
-                            ToolResultBlock(
-                                tool_use_id=tc.tool_id,
-                                content=content,
-                                is_error=result.is_error,
-                            )
-                        )
                         yield ToolResultEvent(
                             tool_id=tc.tool_id,
                             tool_name=tc.tool_name,
@@ -763,7 +790,6 @@ class Agent:
             exit_plan_called = any(
                 tc.tool_name == "ExitPlanMode" for tc in response.tool_calls
             )
-            conversation.add_tool_results_message(tool_results)
             if exit_plan_called:
                 yield TurnComplete(turn=iteration)
                 yield LoopComplete(total_turns=iteration)
@@ -845,10 +871,24 @@ class Agent:
 
 
     async def _execute_batch_parallel(
-        self, calls: list[ToolCallComplete]
+        self, calls: list[ToolCallComplete],
+        on_result: Callable[[_ToolExecResult], None] | None = None,
     ) -> list[_ToolExecResult]:
-        tasks = [self._execute_single_tool_direct(tc) for tc in calls]
-        return list(await asyncio.gather(*tasks))
+        async def execute(tc: ToolCallComplete) -> _ToolExecResult:
+            result = await self._execute_single_tool_direct(tc)
+            if on_result is not None:
+                on_result(result)
+            return result
+
+        tasks = [asyncio.create_task(execute(tc)) for tc in calls]
+        try:
+            return list(await asyncio.gather(*tasks))
+        finally:
+            # gather may raise before siblings finish (or be cancelled itself).
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _execute_tool(
         self, tc: ToolCallComplete
@@ -1008,19 +1048,10 @@ class Agent:
     ) -> str:
         if conversation is None:
             conversation = ConversationManager()
-
-            env_context = build_environment_context(
-                self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
-            )
-            conversation.inject_environment(env_context)
-
-            if self.instructions_content:
-                memory_content = self.memory_manager.load() if self.memory_manager else ""
-                conversation.inject_long_term_memory(
-                    self.instructions_content, memory_content
-                )
+        env_context = self.prepare_conversation(conversation)
 
         if task:
+            conversation.repair_tool_chain()
             conversation.add_user_message(task)
 
         hook_prompts = (
@@ -1044,6 +1075,7 @@ class Agent:
         last_text = ""
 
         for iteration in range(1, self.max_iterations + 1):
+            conversation.repair_tool_chain()
             if self.hook_engine:
                 ctx = self._build_hook_context("turn_start")
                 await self.hook_engine.run_hooks("turn_start", ctx)
@@ -1084,8 +1116,13 @@ class Agent:
 
             collector = StreamCollector()
             llm_stream = self.client.stream(api_conv, system=system, tools=tools)
-            async for _event in collector.consume(llm_stream):
-                pass
+            collected_stream = collector.consume(llm_stream)
+            try:
+                async for _event in collected_stream:
+                    pass
+            finally:
+                await collected_stream.aclose()
+                await llm_stream.aclose()
 
             response = collector.response
             self.total_input_tokens += response.input_tokens
@@ -1115,7 +1152,9 @@ class Agent:
             )
 
             if not response.tool_calls:
-                conversation.add_assistant_message(response.text)
+                conversation.add_assistant_message(response.text, thinking_blocks=[
+                    ConvThinkingBlock(tb.thinking, tb.signature) for tb in response.thinking_blocks
+                ])
                 if self.file_history is not None:
                     summary = response.text[:60] + "..." if len(response.text) > 60 else response.text
                     self.file_history.make_snapshot(len(conversation.history), summary)
@@ -1129,7 +1168,9 @@ class Agent:
                 )
                 for tc in response.tool_calls
             ]
-            conversation.add_assistant_message(response.text, tool_uses)
+            conversation.add_assistant_message(response.text, tool_uses, thinking_blocks=[
+                ConvThinkingBlock(tb.thinking, tb.signature) for tb in response.thinking_blocks
+            ])
             # assistant 回复已在历史中，锚定实际用量；下一轮迭代只需对
             # 下方追加的 tool results 做字符估算。
             conversation.record_usage_anchor(
@@ -1139,25 +1180,23 @@ class Agent:
                 response.cache_creation,
             )
 
-            tool_results: list[ToolResultBlock] = []
-            for tc in response.tool_calls:
-                if event_callback:
-                    event_callback({
-                        "type": "tool_use",
-                        "toolName": tc.tool_name,
-                        "args": tc.arguments,
-                    })
-                result = await self._execute_tool_noninteractive(tc)
-                content = self._maybe_persist_or_truncate(tc.tool_id, result.output)
-                tool_results.append(
-                    ToolResultBlock(
-                        tool_use_id=tc.tool_id,
-                        content=content,
-                        is_error=result.is_error,
+            with conversation.tool_result_transaction() as tool_results:
+                for tc in response.tool_calls:
+                    if event_callback:
+                        event_callback({
+                            "type": "tool_use",
+                            "toolName": tc.tool_name,
+                            "args": tc.arguments,
+                        })
+                    result = await self._execute_tool_noninteractive(tc)
+                    content = self._maybe_persist_or_truncate(tc.tool_id, result.output)
+                    tool_results.append(
+                        ToolResultBlock(
+                            tool_use_id=tc.tool_id,
+                            content=content,
+                            is_error=result.is_error,
+                        )
                     )
-                )
-
-            conversation.add_tool_results_message(tool_results)
 
             if self.hook_engine:
                 ctx = self._build_hook_context("turn_end")

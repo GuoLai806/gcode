@@ -41,6 +41,8 @@ def build_anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
                     "content": tr.content,
                     "is_error": tr.is_error,
                 })
+            if m.content:
+                content.append({"type": "text", "text": m.content})
             result.append({"role": "user", "content": content})
         else:
             # 合并连续的 user 纯文本消息（system-reminder 或普通 user 文本）。
@@ -77,6 +79,8 @@ def build_openai_input(messages: list[Message]) -> list[dict[str, Any]]:
                     "call_id": tr.tool_use_id,
                     "output": tr.content,
                 })
+            if m.content:
+                result.append({"role": "user", "content": m.content})
         else:
             result.append({"role": m.role, "content": m.content})
     return result
@@ -115,6 +119,8 @@ def build_chat_completion_messages(messages: list[Message]) -> list[dict[str, An
                     "tool_call_id": tr.tool_use_id,
                     "content": tr.content,
                 })
+            if m.content:
+                result.append({"role": "user", "content": m.content})
         else:
             result.append({"role": m.role, "content": m.content})
     return result

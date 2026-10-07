@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import random
 import time as _time
@@ -54,7 +55,6 @@ from gcode.memory import (
     Session,
     SessionManager,
     find_relevant_memories,
-    generate_session_summary,
     load_instructions,
     make_compact_boundary,
     render_reminder,
@@ -603,6 +603,7 @@ class GCodeApp(App):
         self._spinner_label: Static | None = None
         self._mcp_server_info: str = ""
         self._agent_task: asyncio.Task[None] | None = None
+        self._turn_tasks: set[asyncio.Task] = set()
         self._subagent_task: asyncio.Task[None] | None = None
         self._subagent_start_time: float | None = None
         self.session_manager: SessionManager | None = None
@@ -670,6 +671,17 @@ class GCodeApp(App):
         else:
             self.query_one("#chat-area").display = False
             self.query_one("#input-area").display = False
+
+    async def on_unmount(self) -> None:
+        # Plain asyncio tasks are not automatically managed by Textual Workers.
+        # Keep ownership even after Ctrl+C resets the visible streaming state.
+        tasks = [task for task in self._turn_tasks if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if self.session:
+            self.session.close()
 
     def _select_provider(self, provider: ProviderConfig) -> None:
         self._selected_provider = provider
@@ -1204,7 +1216,18 @@ class GCodeApp(App):
             return ""
 
     async def _send_message(self, text: str, is_notification: bool = False) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._turn_tasks.add(task)
+        try:
+            await self._send_message_impl(text, is_notification)
+        finally:
+            if task is not None:
+                self._turn_tasks.discard(task)
+
+    async def _send_message_impl(self, text: str, is_notification: bool = False) -> None:
         assert self.agent is not None
+        self.agent.prepare_conversation(self.conversation)
 
         if self._mcp_init_task and not self._mcp_init_task.done():
             self._show_system_message("Waiting for MCP servers to connect...")
@@ -1282,8 +1305,9 @@ class GCodeApp(App):
 
         await asyncio.sleep(0)
 
+        agent_stream = self.agent.run(self.conversation)
         try:
-            async for event in self.agent.run(self.conversation):
+            async for event in agent_stream:
                 if isinstance(event, ThinkingText):
                     self.call_after_refresh(chat.scroll_end, animate=False)
 
@@ -1414,8 +1438,8 @@ class GCodeApp(App):
                             self.agent.total_input_tokens
                             + self.agent.total_output_tokens
                         )
-                        asyncio.ensure_future(
-                            self._update_session_summary()
+                        self.session.meta.save(
+                            self.session._sessions_dir / f"{self.session.session_id}.meta"
                         )
                     if self.agent.plan_mode:
                         asyncio.ensure_future(
@@ -1433,7 +1457,7 @@ class GCodeApp(App):
             self.call_after_refresh(chat.scroll_end, animate=False)
 
         except asyncio.CancelledError:
-            if accumulated_text:
+            if accumulated_text and ai_row.is_mounted:
                 if streaming_label is not None:
                     await streaming_label.remove()
                 md = Markdown(
@@ -1444,11 +1468,34 @@ class GCodeApp(App):
             self._show_system_message("Operation cancelled")
         except LLMError as e:
             self._show_error(str(e))
+        except Exception as e:
+            logging.getLogger(__name__).exception("Agent turn failed")
+            self._show_error(f"Operation failed: {e}")
         finally:
-            self._finish_streaming()
-            input_widget.focus()
+            # async-for does not close a generator when UI work is interrupted at
+            # a yielded event. Close it explicitly before a new user message starts.
+            try:
+                try:
+                    await agent_stream.aclose()
+                finally:
+                    self.conversation.repair_tool_chain()
+                    if self.session:
+                        for msg in self.conversation.history[history_cursor:]:
+                            self.session.append(msg)
+                        history_cursor = len(self.conversation.history)
+                    for block in tool_blocks.values():
+                        if isinstance(block, ToolCallBlock) and block._loading:
+                            block.set_result("Interrupted; outcome unknown", True, 0.0)
+            except Exception as e:
+                logging.getLogger(__name__).exception("Unable to finalize agent turn")
+                self._show_error(f"Unable to finalize/save this turn: {e}")
+            finally:
+                self._finish_streaming()
+                if input_widget.is_mounted:
+                    input_widget.focus()
 
-            await self._process_task_notifications()
+            if input_widget.is_mounted:
+                await self._process_task_notifications()
 
     async def _process_task_notifications(self) -> None:
         completed = self.task_manager.poll_completed()
@@ -1598,6 +1645,23 @@ class GCodeApp(App):
         self._stop_spinner()
         self._stop_teammate_polling()
         self._agent_task = None
+        had_pending_prompt = False
+        for attribute, selector in (
+            ("_pending_perm_request", "#perm-inline"),
+            ("_pending_askuser_event", "#askuser-inline"),
+        ):
+            pending = getattr(self, attribute, None)
+            if pending is not None:
+                had_pending_prompt = True
+                if not pending.future.done():
+                    pending.future.cancel()
+                setattr(self, attribute, None)
+                for widget in self.query(selector):
+                    widget.remove()
+        if had_pending_prompt:
+            for input_widget in self.query("#chat-input"):
+                input_widget.disabled = False
+                input_widget.focus()
         if self._teammate_tree is not None:
             self._teammate_tree.remove()
             self._teammate_tree = None
@@ -1691,7 +1755,8 @@ class GCodeApp(App):
 
         req = getattr(self, "_pending_perm_request", None)
         if req is not None:
-            req.future.set_result(event.response)
+            if not req.future.done():
+                req.future.set_result(event.response)
             self._pending_perm_request = None
         # 从聊天区移除权限弹窗组件
         try:
@@ -1732,25 +1797,6 @@ class GCodeApp(App):
                 await row.mount(md)
 
         self.call_after_refresh(chat.scroll_end, animate=False)
-
-    # -----------------------------------------------------------------
-    # Session 摘要（异步后台生成）
-    # -----------------------------------------------------------------
-
-    async def _update_session_summary(self) -> None:
-        if not self.session or not self.client or not self.agent:
-            return
-        try:
-            summary = await generate_session_summary(
-                self.client, self.conversation, self.agent.protocol
-            )
-            if summary:
-                self.session.meta.summary = summary
-                self.session.meta.save(
-                    self.session._sessions_dir / f"{self.session.session_id}.meta"
-                )
-        except Exception:
-            pass
 
     # -----------------------------------------------------------------
     # MCP
@@ -1873,12 +1919,17 @@ class GCodeApp(App):
         self.exit()
 
     def _show_error(self, text: str) -> None:
+        if not self.query("#chat-area"):
+            logging.getLogger(__name__).warning("UI closed: %s", text)
+            return
         chat = self.query_one("#chat-area", VerticalScroll)
         error_widget = Static(f"✖ {text}", classes="message error-message")
         chat.mount(error_widget)
         self.call_after_refresh(chat.scroll_end, animate=False)
 
     def _show_system_message(self, text: str) -> None:
+        if not self.query("#chat-area"):
+            return
         chat = self.query_one("#chat-area", VerticalScroll)
         msg = Static(f"  {text}", classes="message system-message")
         chat.mount(msg)

@@ -11,7 +11,6 @@ from gcode.memory.session import (
     SessionManager,
     SessionMeta,
     SessionRecord,
-    generate_session_summary,
     make_compact_boundary,
     parse_compact_boundary,
     validate_message_chain,
@@ -27,7 +26,6 @@ __all__ = [
     "SessionMeta",
     "SessionRecord",
     "find_relevant_memories",
-    "generate_session_summary",
     "load_instructions",
     "make_compact_boundary",
     "parse_compact_boundary",
@@ -35,4 +33,3 @@ __all__ = [
     "render_reminder",
     "validate_message_chain",
 ]
-

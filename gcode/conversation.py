@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
+from collections.abc import Iterator
 
 
 @dataclass
@@ -37,6 +39,12 @@ class Message:
 # 估算最后一次 API 用量锚点之后追加的消息 token 开销时使用的字符/token 比率。
 # 与 context.manager 中的恢复状态启发值保持一致，全代码库统一使用同一比率。
 _CHARS_PER_TOKEN = 3.5
+
+INTERRUPTED_TOOL_RESULT = (
+    "Tool execution interrupted before a result was recorded. Its outcome is unknown: "
+    "it may have started or produced side effects. Check the current state before retrying; "
+    "do not assume it succeeded or automatically repeat a non-idempotent action."
+)
 
 
 def _message_chars(m: Message) -> int:
@@ -140,6 +148,90 @@ class ConversationManager:
         self.history.append(
             Message(role="user", content="", tool_results=tool_results)
         )
+
+    @contextmanager
+    def tool_result_transaction(self) -> Iterator[list[ToolResultBlock]]:
+        """Record completed results immediately; close missing pairs on every exit.
+
+        This also runs on CancelledError, GeneratorExit and hook failures. The caller
+        must close its async generator when abandoning iteration at a UI event.
+        """
+        results: list[ToolResultBlock] = []
+        self.add_tool_results_message(results)
+        try:
+            yield results
+        finally:
+            self.repair_tool_chain()
+
+    def repair_tool_chain(self, interruption: str = INTERRUPTED_TOOL_RESULT) -> int:
+        """Make tool pairs adjacent, without replaying tools or inventing success.
+
+        Completed results and all ordinary text/thinking are preserved. Orphan or
+        duplicate results are retained as plain diagnostic text, not sent as invalid
+        tool_result blocks. Repair is idempotent and shared by all entry points.
+        """
+        repaired: list[Message] = []
+        changes = 0
+        index = 0
+        while index < len(self.history):
+            message = self.history[index]
+            index += 1
+            if message.role == "assistant" and message.tool_uses:
+                repaired.append(message)
+                expected = {tu.tool_use_id for tu in message.tool_uses}
+                result_message = None
+                results: list[ToolResultBlock] = []
+                texts: list[str] = []
+                seen: set[str] = set()
+                # Old JSONL stores one record per result; tolerate split messages.
+                while index < len(self.history):
+                    candidate = self.history[index]
+                    if candidate.role != "user" or (
+                        not candidate.tool_results
+                        and not (result_message is None and not candidate.content)
+                    ):
+                        break
+                    index += 1
+                    if result_message is None:
+                        result_message = candidate
+                    else:
+                        changes += 1
+                    if candidate.content:
+                        texts.append(candidate.content)
+                    for result in candidate.tool_results:
+                        if result.tool_use_id in expected and result.tool_use_id not in seen:
+                            results.append(result)
+                            seen.add(result.tool_use_id)
+                        else:
+                            texts.append(f"[Unpaired tool output {result.tool_use_id}]\n{result.content}")
+                            changes += 1
+                for tool_use in message.tool_uses:
+                    if tool_use.tool_use_id not in seen:
+                        results.append(ToolResultBlock(tool_use.tool_use_id, interruption, True))
+                        seen.add(tool_use.tool_use_id)
+                        changes += 1
+                if result_message is None:
+                    result_message = Message(role="user", content="")
+                result_message.tool_results = results
+                result_message.content = "\n\n".join(texts)
+                repaired.append(result_message)
+            elif message.tool_results:
+                message.content = "\n\n".join(
+                    [message.content] if message.content else []
+                ) + ("\n\n" if message.content else "") + "\n\n".join(
+                    f"[Unpaired tool output {tr.tool_use_id}]\n{tr.content}"
+                    for tr in message.tool_results
+                )
+                message.tool_results = []
+                repaired.append(message)
+                changes += 1
+            else:
+                repaired.append(message)
+        if changes:
+            self.history = repaired
+            # Inserting into an anchored prefix invalidates the old usage offset.
+            self.baseline_tokens = self.anchor_count = self.last_input_tokens = 0
+        return changes
 
 
     def inject_environment(self, context: str) -> None:

@@ -402,7 +402,8 @@ class TestForkMode:
         assert placeholder.role == "user"
         assert len(placeholder.tool_results) == 1
         assert placeholder.tool_results[0].tool_use_id == "tu1"
-        assert placeholder.tool_results[0].content == "interrupted"
+        assert "interrupted" in placeholder.tool_results[0].content
+        assert placeholder.tool_results[0].is_error
 
     def test_no_double_fork(self):
         conv = ConversationManager()

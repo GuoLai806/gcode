@@ -166,6 +166,7 @@ class AnthropicClient(LLMClient):
     ) -> AsyncIterator[StreamEvent]:
         import anthropic as _anthropic
 
+        conversation.repair_tool_chain()
         messages = build_anthropic_messages(conversation.get_messages())
 
         # 在最长稳定前缀上标记 prompt cache 断点：system、tools
@@ -305,6 +306,7 @@ class OpenAIClient(LLMClient):
     ) -> AsyncIterator[StreamEvent]:
         import openai as _openai
 
+        conversation.repair_tool_chain()
         input_messages = build_openai_input(conversation.get_messages())
 
         kwargs: dict[str, Any] = {
@@ -455,6 +457,7 @@ class OpenAICompatClient(LLMClient):
     ) -> AsyncIterator[StreamEvent]:
         import openai as _openai
 
+        conversation.repair_tool_chain()
         messages = build_chat_completion_messages(conversation.get_messages())
 
         # 如果有 system 消息则插入到消息列表头部。

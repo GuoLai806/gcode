@@ -351,7 +351,7 @@ class TestSessionResume:
         mgr = SessionManager(str(tmp_path))
         assert mgr.resume("nonexistent") is None
 
-    def test_resume_truncates_incomplete_chain(self, tmp_path: Path) -> None:
+    def test_resume_repairs_incomplete_chain(self, tmp_path: Path) -> None:
         mgr = SessionManager(str(tmp_path))
         s = mgr.create()
         sid = s.session_id
@@ -370,7 +370,9 @@ class TestSessionResume:
 
         result = mgr.resume(sid)
         assert result is not None
-        assert len(result.messages) == 2
+        assert len(result.messages) == 4
+        assert result.messages[-1].tool_results[0].tool_use_id == "t1"
+        assert result.messages[-1].tool_results[0].is_error
         result.session.close()
 
 # =========================================================================

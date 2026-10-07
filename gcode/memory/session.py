@@ -9,17 +9,11 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from gcode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
+from gcode.conversation import ConversationManager, Message, ThinkingBlock, ToolResultBlock, ToolUseBlock
 
 SESSIONS_DIR = ".gcode/sessions"
 DEFAULT_MAX_AGE_DAYS = 30
 TITLE_MAX_LENGTH = 50
-
-SESSION_SUMMARY_PROMPT = (
-    "你是一个对话摘要助手。请根据下面的对话内容，用一句话总结这个会话的主要内容。"
-    "只输出摘要文本，不要加任何前缀或标点符号外的修饰。不要调用任何工具。"
-)
-
 
 # ---------------------------------------------------------------------------
 # RecordType & SessionRecord
@@ -37,6 +31,8 @@ class RecordType(str, Enum):
     # 包含摘要文本和原样保留的 keep 尾部（以序列化 record 形式内联），
     # 使 resume 可以仅凭此标记重建压缩后的状态，无需重放标记之前的原始前缀。
     COMPACT_BOUNDARY = "compact_boundary"
+    # Append-only recovery checkpoint: original records remain available for audit.
+    RECOVERY_BOUNDARY = "recovery_boundary"
 
 
 @dataclass
@@ -90,9 +86,14 @@ class SessionRecord:
                         is_error=tr.is_error,
                     )
                 )
+            if message.content:
+                records.append(cls(type=RecordType.USER, content=message.content, timestamp=now))
         elif message.role == "assistant":
-            if message.tool_uses:
-                content_blocks: list[dict[str, Any]] = []
+            if message.tool_uses or message.thinking_blocks:
+                content_blocks: list[dict[str, Any]] = [
+                    {"type": "thinking", "thinking": tb.thinking, "signature": tb.signature}
+                    for tb in message.thinking_blocks
+                ]
                 if message.content:
                     content_blocks.append({"type": "text", "text": message.content})
                 for tu in message.tool_uses:
@@ -233,13 +234,14 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
             )
             continue
 
-        if record.type == RecordType.COMPACT_BOUNDARY:
+        if record.type in (RecordType.COMPACT_BOUNDARY, RecordType.RECOVERY_BOUNDARY):
             # 内联展开：摘要作为 user 消息，后接原样保留的 keep 尾部。
             # resume() 通常已预裁剪到最后一个 boundary，所以这里只会处理
             # 权威的那一条；但在此展开可以保证 records_to_messages 对任何
             # 直接调用者都保持自洽。
             summary, keep_messages = parse_compact_boundary(record)
-            messages.append(Message(role="user", content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + summary))
+            if record.type == RecordType.COMPACT_BOUNDARY:
+                messages.append(Message(role="user", content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + summary))
             messages.extend(keep_messages)
             continue
 
@@ -249,11 +251,17 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
             if isinstance(record.content, list):
                 text = ""
                 tool_uses: list[ToolUseBlock] = []
+                thinking_blocks: list[ThinkingBlock] = []
                 for block in record.content:
                     if not isinstance(block, dict):
                         continue
                     if block.get("type") == "text":
                         text += block.get("text", "")
+                    elif block.get("type") == "thinking":
+                        thinking_blocks.append(ThinkingBlock(
+                            thinking=block.get("thinking", ""),
+                            signature=block.get("signature", ""),
+                        ))
                     elif block.get("type") == "tool_use":
                         tool_uses.append(
                             ToolUseBlock(
@@ -263,7 +271,8 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
                             )
                         )
                 messages.append(
-                    Message(role="assistant", content=text, tool_uses=tool_uses)
+                    Message(role="assistant", content=text, tool_uses=tool_uses,
+                            thinking_blocks=thinking_blocks)
                 )
             else:
                 messages.append(
@@ -288,15 +297,19 @@ def validate_message_chain(records: list[SessionRecord]) -> int:
     pending_tool_uses: set[str] = set()
 
     for i, record in enumerate(records):
+        if pending_tool_uses and record.type != RecordType.TOOL_RESULT:
+            break
+        if record.type == RecordType.TOOL_RESULT:
+            if record.tool_use_id not in pending_tool_uses:
+                break
+            pending_tool_uses.remove(record.tool_use_id)
         if record.type == RecordType.ASSISTANT and isinstance(record.content, list):
             for block in record.content:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     tool_id = block.get("id", "")
-                    if tool_id:
-                        pending_tool_uses.add(tool_id)
-
-        if record.type == RecordType.TOOL_RESULT and record.tool_use_id:
-            pending_tool_uses.discard(record.tool_use_id)
+                    if not tool_id or tool_id in pending_tool_uses:
+                        return last_valid
+                    pending_tool_uses.add(tool_id)
 
         if not pending_tool_uses:
             last_valid = i + 1
@@ -313,6 +326,7 @@ def validate_message_chain(records: list[SessionRecord]) -> int:
 class SessionMeta:
     id: str
     title: str = ""
+    # Legacy metadata only: preserve existing files, but never generate a synopsis.
     summary: str = ""
     message_count: int = 0
     total_tokens: int = 0
@@ -414,43 +428,6 @@ class ResumeResult:
 
 
 # ---------------------------------------------------------------------------
-# Session 摘要生成
-# ---------------------------------------------------------------------------
-
-
-async def generate_session_summary(
-    client: Any, conversation: ConversationManager, protocol: str
-) -> str:
-    from gcode.tools.base import StreamEnd, TextDelta
-
-    recent = conversation.history[-10:]
-    if not recent:
-        return ""
-
-    summary_conv = ConversationManager()
-    summary_conv.history = [Message(role="user", content=SESSION_SUMMARY_PROMPT)]
-    for msg in recent:
-        summary_conv.history.append(msg)
-    summary_conv.history.append(
-        Message(role="user", content="请用一句话总结上面的对话内容。不要调用工具。")
-    )
-
-    collected = ""
-    try:
-        async for event in client.stream(
-            summary_conv, system=SESSION_SUMMARY_PROMPT
-        ):
-            if isinstance(event, TextDelta):
-                collected += event.text
-            elif isinstance(event, StreamEnd):
-                pass
-    except Exception:
-        return ""
-
-    return collected.strip()
-
-
-# ---------------------------------------------------------------------------
 # SessionManager
 # ---------------------------------------------------------------------------
 
@@ -518,14 +495,17 @@ class SessionManager:
         # 普通消息（续写）照常重放。没有 boundary 则全量重放（兼容旧 session）。
         last_boundary = -1
         for i, rec in enumerate(records):
-            if rec.type == RecordType.COMPACT_BOUNDARY:
+            if rec.type in (RecordType.COMPACT_BOUNDARY, RecordType.RECOVERY_BOUNDARY):
                 last_boundary = i
         if last_boundary >= 0:
             records = records[last_boundary:]
 
-        valid_count = validate_message_chain(records)
-        records = records[:valid_count]
+        # Do not discard a new user message or successful partial results just
+        # because an earlier tool batch was interrupted.
         messages = records_to_messages(records)
+        restored = ConversationManager(history=messages)
+        repairs = restored.repair_tool_chain()
+        messages = restored.history
 
         file = open(jsonl_path, "a", encoding="utf-8")  # noqa: SIM115
         session = Session(
@@ -534,6 +514,10 @@ class SessionManager:
             meta=meta,
             sessions_dir=self._sessions_dir,
         )
+        if repairs:
+            checkpoint = make_compact_boundary("", messages)
+            checkpoint.type = RecordType.RECOVERY_BOUNDARY
+            session.append_record(checkpoint)
 
         return ResumeResult(
             session=session,

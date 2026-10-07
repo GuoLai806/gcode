@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import shlex
+import signal
+import subprocess
 
 from pydantic import BaseModel, Field
 
@@ -86,19 +89,42 @@ class Bash(Tool):
 
     async def execute(self, params: Params) -> ToolResult:
         timeout = min(params.timeout, MAX_TIMEOUT)
+        proc = None
+        process_options = (
+            {"start_new_session": True} if os.name == "posix"
+            else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        )
+        creation = None
 
         try:
-            proc = await asyncio.create_subprocess_shell(
+            creation = asyncio.create_task(asyncio.create_subprocess_shell(
                 params.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+                **process_options,
+            ))
+            # If cancellation arrives during spawn, retain ownership of the child
+            # so it can still be terminated after the OS finishes creating it.
+            proc = await asyncio.shield(creation)
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            if proc is not None:
+                await self._stop_process(proc)
             return ToolResult(output=f"Error: command timed out after {timeout}s", is_error=True)
+        except asyncio.CancelledError:
+            if proc is None and creation is not None:
+                try:
+                    proc = await self._finish_cleanup(creation)
+                except Exception:
+                    pass  # failed spawn: no successfully-created process to stop
+            if proc is not None:
+                # A second Escape must not cancel cleanup and leave a child running.
+                cleanup = asyncio.create_task(self._stop_process(proc))
+                await self._finish_cleanup(cleanup)
+            raise
         except Exception as e:
+            if proc is not None:
+                await self._stop_process(proc)
             return ToolResult(output=f"Error executing command: {e}", is_error=True)
 
         parts: list[str] = []
@@ -115,3 +141,50 @@ class Bash(Tool):
             is_error=_interpret_exit_code(params.command, proc.returncode or 0),
         )
 
+    @staticmethod
+    async def _finish_cleanup(task: asyncio.Task):
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        return task.result()
+
+    @staticmethod
+    async def _stop_process(proc: asyncio.subprocess.Process) -> None:
+        """Stop only this command's isolated process tree and drain its pipes."""
+        if os.name == "posix":
+            # The shell and its children share the new, owned process group.
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
+            finally:
+                # Also stop children that ignored TERM or closed inherited pipes.
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        else:
+            # terminate() alone on Windows only kills the shell, not its children.
+            if proc.returncode is None:
+                killer = await asyncio.create_subprocess_exec(
+                    "taskkill", "/PID", str(proc.pid), "/T", "/F",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                try:
+                    await asyncio.wait_for(killer.wait(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    killer.kill()
+                    await killer.wait()
+                if proc.returncode is None:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+        await asyncio.wait_for(proc.communicate(), timeout=3.0)
