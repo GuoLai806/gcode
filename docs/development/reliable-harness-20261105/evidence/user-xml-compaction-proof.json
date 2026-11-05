@@ -1,0 +1,23 @@
+{
+  "committed": true,
+  "user_xml_retained": {
+    "INSTRUCTIONS": true,
+    "runtime": true,
+    "environment": true,
+    "tool_result": true
+  },
+  "runtime_promoted": false,
+  "reminder_promoted": false,
+  "tool_promoted": false,
+  "before": {
+    "gcode/runtime/constraints.py": "b463c0c4c5e8d994182e1c4e6d649ee2670668f54dcc459e559528c141eaf395",
+    "gcode/context/manager.py": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+    "gcode/conversation.py": "94c5521f6e11406068decfa0c53439e87d3b7689e361f09d08aeaaee8d73f47e"
+  },
+  "after": {
+    "gcode/runtime/constraints.py": "b463c0c4c5e8d994182e1c4e6d649ee2670668f54dcc459e559528c141eaf395",
+    "gcode/context/manager.py": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+    "gcode/conversation.py": "94c5521f6e11406068decfa0c53439e87d3b7689e361f09d08aeaaee8d73f47e"
+  },
+  "scope": "synthetic messages and provider; no cloud, GUI or native"
+}

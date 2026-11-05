@@ -1,0 +1,54 @@
+{
+  "rows": [
+    {
+      "tag": "INSTRUCTIONS",
+      "user_literal_retained": true,
+      "runtime_text_excluded": true,
+      "reminder_text_excluded": true,
+      "assistant_text_excluded": true,
+      "legacy_tag_excluded": true
+    },
+    {
+      "tag": "runtime",
+      "user_literal_retained": true,
+      "runtime_text_excluded": true,
+      "reminder_text_excluded": true,
+      "assistant_text_excluded": true,
+      "legacy_tag_excluded": true
+    },
+    {
+      "tag": "environment",
+      "user_literal_retained": true,
+      "runtime_text_excluded": true,
+      "reminder_text_excluded": true,
+      "assistant_text_excluded": true,
+      "legacy_tag_excluded": true
+    },
+    {
+      "tag": "tool_result",
+      "user_literal_retained": true,
+      "runtime_text_excluded": true,
+      "reminder_text_excluded": true,
+      "assistant_text_excluded": true,
+      "legacy_tag_excluded": true
+    }
+  ],
+  "ordinary_runtime_ledger": [],
+  "trusted_compaction_history": [
+    "user-approved-history"
+  ],
+  "forged_runtime_metadata_result": [
+    "forged-ledger-entry"
+  ],
+  "forged_case_limit": "directly constructed internal metadata; no evidence of a normal tool/provider route to set this field",
+  "before": {
+    "gcode/runtime/constraints.py": "b463c0c4c5e8d994182e1c4e6d649ee2670668f54dcc459e559528c141eaf395",
+    "gcode/conversation.py": "94c5521f6e11406068decfa0c53439e87d3b7689e361f09d08aeaaee8d73f47e",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81"
+  },
+  "after": {
+    "gcode/runtime/constraints.py": "b463c0c4c5e8d994182e1c4e6d649ee2670668f54dcc459e559528c141eaf395",
+    "gcode/conversation.py": "94c5521f6e11406068decfa0c53439e87d3b7689e361f09d08aeaaee8d73f47e",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81"
+  }
+}

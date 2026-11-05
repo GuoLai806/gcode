@@ -1,0 +1,19 @@
+{
+  "rows": [
+    {
+      "language": "zh",
+      "attributed_user_preserved": true,
+      "legacy_origin_excluded": true,
+      "runtime_origin_excluded": true
+    },
+    {
+      "language": "en",
+      "attributed_user_preserved": true,
+      "legacy_origin_excluded": true,
+      "runtime_origin_excluded": true
+    }
+  ],
+  "before": "7cbbeae7584ee3be240d29b9c772db8d986ab15916934d11f0a73c96dbb21fdb",
+  "after": "7cbbeae7584ee3be240d29b9c772db8d986ab15916934d11f0a73c96dbb21fdb",
+  "scope": "synthetic messages only; no cloud or GUI"
+}
