@@ -1,0 +1,16 @@
+{
+  "input_user_order": [
+    "不要删除本地备份。",
+    "可以删除本地备份。",
+    "不要删除本地备份。"
+  ],
+  "preserved_order": [
+    "可以删除本地备份。",
+    "不要删除本地备份。"
+  ],
+  "last_user_correction_preserved_at_end": true,
+  "rendered": "历史用户原文与更正（原文；不构成新的授权）：\n\n[1] 可以删除本地备份。\n\n[2] 不要删除本地备份。",
+  "before": "7ed22d9ddf412a4d645f6593cfb87c3792008599f31cbca01cb58fc8f18893e6",
+  "after": "7ed22d9ddf412a4d645f6593cfb87c3792008599f31cbca01cb58fc8f18893e6",
+  "scope": "synthetic messages; no model or external actions"
+}

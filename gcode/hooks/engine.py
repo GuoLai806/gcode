@@ -23,7 +23,7 @@ class HookEngine:
         self.hooks: list[Hook] = hooks or []
         self._prompt_messages: list[str] = []
         self._notifications: list[HookNotification] = []
-
+        self._tasks: set[asyncio.Task] = set()
 
     def find_matching_hooks(self, event: str, ctx: HookContext) -> list[Hook]:
         matched: list[Hook] = []
@@ -37,16 +37,22 @@ class HookEngine:
             matched.append(hook)
         return matched
 
-
     async def run_hooks(self, event: str, ctx: HookContext) -> None:
         matched = self.find_matching_hooks(event, ctx)
         for hook in matched:
             hook.mark_executed()
             if hook.async_exec:
-                asyncio.ensure_future(self._run_single(hook, ctx))
+                task = asyncio.create_task(self._run_single(hook, ctx))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
             else:
                 await self._run_single(hook, ctx)
 
+    async def aclose(self) -> None:
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _run_single(self, hook: Hook, ctx: HookContext) -> None:
         try:
@@ -62,9 +68,7 @@ class HookEngine:
                 )
             )
             if not result.success:
-                log.warning(
-                    "Hook '%s' action failed: %s", hook.id, result.output
-                )
+                log.warning("Hook '%s' action failed: %s", hook.id, result.output)
         except Exception as e:
             log.warning("Hook '%s' execution error: %s", hook.id, e)
             self._notifications.append(
@@ -76,10 +80,7 @@ class HookEngine:
                 )
             )
 
-
-    async def run_pre_tool_hooks(
-        self, ctx: HookContext
-    ) -> ToolRejectedError | None:
+    async def run_pre_tool_hooks(self, ctx: HookContext) -> ToolRejectedError | None:
         matched = self.find_matching_hooks("pre_tool_use", ctx)
         for hook in matched:
             hook.mark_executed()
@@ -107,7 +108,6 @@ class HookEngine:
         messages = list(self._prompt_messages)
         self._prompt_messages.clear()
         return messages
-
 
     def drain_notifications(self) -> list[HookNotification]:
         notifications = list(self._notifications)

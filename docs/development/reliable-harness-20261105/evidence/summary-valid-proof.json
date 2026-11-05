@@ -1,0 +1,7 @@
+{
+  "valid_compaction_committed": true,
+  "constraint_in_projection": true,
+  "before": "022eb6b954a9d54060856a51a42fc7a76ba423dfca480326a4087db52c94993a",
+  "after": "022eb6b954a9d54060856a51a42fc7a76ba423dfca480326a4087db52c94993a",
+  "scope": "synthetic structured summary; no network"
+}

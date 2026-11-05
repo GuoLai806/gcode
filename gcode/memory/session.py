@@ -3,17 +3,39 @@ from __future__ import annotations
 import json
 import random
 import string
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from gcode.conversation import ConversationManager, Message, ThinkingBlock, ToolResultBlock, ToolUseBlock
+from gcode.conversation import (
+    ConversationManager,
+    Message,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 SESSIONS_DIR = ".gcode/sessions"
 DEFAULT_MAX_AGE_DAYS = 30
 TITLE_MAX_LENGTH = 50
+
+
+def _atomic_private_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, temporary = tempfile.mkstemp(prefix=".session-meta-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
 
 # ---------------------------------------------------------------------------
 # RecordType & SessionRecord
@@ -42,6 +64,11 @@ class SessionRecord:
     timestamp: datetime
     tool_use_id: str | None = None
     is_error: bool = False
+    details: dict[str, Any] | None = None
+    content_blocks: list[dict[str, Any]] | None = None
+    origin: str = ""
+    preserved_constraints: list[str] = field(default_factory=list)
+    notification_ids: list[str] = field(default_factory=list)
 
     def to_jsonl(self) -> str:
         data: dict[str, Any] = {
@@ -51,10 +78,19 @@ class SessionRecord:
         }
         if self.tool_use_id is not None:
             data["tool_use_id"] = self.tool_use_id
+        if self.origin:
+            data["origin"] = self.origin
+        if self.preserved_constraints:
+            data["preserved_constraints"] = self.preserved_constraints
+        if self.notification_ids:
+            data["notification_ids"] = self.notification_ids
         if self.type == RecordType.TOOL_RESULT:
             data["is_error"] = self.is_error
+            if self.details is not None:
+                data["details"] = self.details
+            if self.content_blocks is not None:
+                data["content_blocks"] = self.content_blocks
         return json.dumps(data, ensure_ascii=False)
-
 
     @classmethod
     def from_jsonl(cls, line: str) -> SessionRecord | None:
@@ -66,6 +102,11 @@ class SessionRecord:
                 timestamp=datetime.fromisoformat(data["timestamp"]),
                 tool_use_id=data.get("tool_use_id"),
                 is_error=data.get("is_error", False),
+                details=data.get("details"),
+                content_blocks=data.get("content_blocks"),
+                origin=data.get("origin", ""),
+                preserved_constraints=data.get("preserved_constraints", []),
+                notification_ids=data.get("notification_ids", []),
             )
         except (json.JSONDecodeError, KeyError, ValueError):
             return None
@@ -84,14 +125,22 @@ class SessionRecord:
                         timestamp=now,
                         tool_use_id=tr.tool_use_id,
                         is_error=tr.is_error,
+                        details=tr.details,
+                        content_blocks=tr.content_blocks,
                     )
                 )
             if message.content:
-                records.append(cls(type=RecordType.USER, content=message.content, timestamp=now))
+                records.append(
+                    cls(type=RecordType.USER, content=message.content, timestamp=now)
+                )
         elif message.role == "assistant":
             if message.tool_uses or message.thinking_blocks:
                 content_blocks: list[dict[str, Any]] = [
-                    {"type": "thinking", "thinking": tb.thinking, "signature": tb.signature}
+                    {
+                        "type": "thinking",
+                        "thinking": tb.thinking,
+                        "signature": tb.signature,
+                    }
                     for tb in message.thinking_blocks
                 ]
                 if message.content:
@@ -106,17 +155,27 @@ class SessionRecord:
                         }
                     )
                 records.append(
-                    cls(type=RecordType.ASSISTANT, content=content_blocks, timestamp=now)
+                    cls(
+                        type=RecordType.ASSISTANT, content=content_blocks, timestamp=now
+                    )
                 )
             else:
                 records.append(
-                    cls(type=RecordType.ASSISTANT, content=message.content, timestamp=now)
+                    cls(
+                        type=RecordType.ASSISTANT,
+                        content=message.content,
+                        timestamp=now,
+                    )
                 )
         else:
             records.append(
                 cls(type=RecordType.USER, content=message.content, timestamp=now)
             )
 
+        for record in records:
+            record.origin = message.origin
+            record.preserved_constraints = list(message.preserved_constraints)
+            record.notification_ids = list(message.notification_ids)
         return records
 
 
@@ -136,15 +195,29 @@ def _message_to_record_dicts(message: Message) -> list[dict[str, Any]]:
     dicts: list[dict[str, Any]] = []
     for rec in SessionRecord.from_message(message):
         data: dict[str, Any] = {"type": rec.type.value, "content": rec.content}
+        data.update(
+            origin=rec.origin,
+            preserved_constraints=rec.preserved_constraints,
+            notification_ids=rec.notification_ids,
+        )
         if rec.tool_use_id is not None:
             data["tool_use_id"] = rec.tool_use_id
         if rec.type == RecordType.TOOL_RESULT:
             data["is_error"] = rec.is_error
+            if rec.details is not None:
+                data["details"] = rec.details
+            if rec.content_blocks is not None:
+                data["content_blocks"] = rec.content_blocks
         dicts.append(data)
     return dicts
 
 
-def make_compact_boundary(summary: str, keep: list[Message]) -> SessionRecord:
+def make_compact_boundary(
+    summary: str,
+    keep: list[Message],
+    preserved_constraints: list[str] | None = None,
+    notification_ids: list[str] | None = None,
+) -> SessionRecord:
     """构建一条 COMPACT_BOUNDARY record，内联摘要和原样保留的 keep 尾部。
 
     `keep` 是 auto_compact 原样保留的近期尾部消息。将其存储在 boundary record
@@ -154,7 +227,12 @@ def make_compact_boundary(summary: str, keep: list[Message]) -> SessionRecord:
     keep_dicts: list[dict[str, Any]] = []
     for msg in keep:
         keep_dicts.extend(_message_to_record_dicts(msg))
-    payload = {"summary": summary, "keep": keep_dicts}
+    payload = {
+        "summary": summary,
+        "keep": keep_dicts,
+        "preserved_constraints": preserved_constraints or [],
+        "notification_ids": notification_ids or [],
+    }
     return SessionRecord(
         type=RecordType.COMPACT_BOUNDARY,
         content=payload,
@@ -185,6 +263,11 @@ def parse_compact_boundary(record: SessionRecord) -> tuple[str, list[Message]]:
                     timestamp=record.timestamp,
                     tool_use_id=item.get("tool_use_id"),
                     is_error=item.get("is_error", False),
+                    details=item.get("details"),
+                    content_blocks=item.get("content_blocks"),
+                    origin=item.get("origin", ""),
+                    preserved_constraints=item.get("preserved_constraints", []),
+                    notification_ids=item.get("notification_ids", []),
                 )
             )
         except ValueError:
@@ -212,6 +295,8 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
                         else json.dumps(record.content)
                     ),
                     is_error=record.is_error,
+                    details=record.details,
+                    content_blocks=record.content_blocks,
                 )
             )
             continue
@@ -229,7 +314,8 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
             messages.append(
                 Message(
                     role="user",
-                    content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + (record.content or ""),
+                    content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n"
+                    + (record.content or ""),
                 )
             )
             continue
@@ -241,12 +327,31 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
             # 直接调用者都保持自洽。
             summary, keep_messages = parse_compact_boundary(record)
             if record.type == RecordType.COMPACT_BOUNDARY:
-                messages.append(Message(role="user", content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + summary))
+                messages.append(
+                    Message(
+                        role="user",
+                        content="本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n"
+                        + summary,
+                        origin="compaction",
+                        preserved_constraints=record.content.get(
+                            "preserved_constraints", []
+                        ),
+                        notification_ids=record.content.get("notification_ids", []),
+                    )
+                )
             messages.extend(keep_messages)
             continue
 
         if record.type == RecordType.USER:
-            messages.append(Message(role="user", content=record.content or ""))
+            messages.append(
+                Message(
+                    role="user",
+                    content=record.content or "",
+                    origin=record.origin,
+                    preserved_constraints=record.preserved_constraints,
+                    notification_ids=record.notification_ids,
+                )
+            )
         elif record.type == RecordType.ASSISTANT:
             if isinstance(record.content, list):
                 text = ""
@@ -258,10 +363,12 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
                     if block.get("type") == "text":
                         text += block.get("text", "")
                     elif block.get("type") == "thinking":
-                        thinking_blocks.append(ThinkingBlock(
-                            thinking=block.get("thinking", ""),
-                            signature=block.get("signature", ""),
-                        ))
+                        thinking_blocks.append(
+                            ThinkingBlock(
+                                thinking=block.get("thinking", ""),
+                                signature=block.get("signature", ""),
+                            )
+                        )
                     elif block.get("type") == "tool_use":
                         tool_uses.append(
                             ToolUseBlock(
@@ -271,13 +378,15 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
                             )
                         )
                 messages.append(
-                    Message(role="assistant", content=text, tool_uses=tool_uses,
-                            thinking_blocks=thinking_blocks)
+                    Message(
+                        role="assistant",
+                        content=text,
+                        tool_uses=tool_uses,
+                        thinking_blocks=thinking_blocks,
+                    )
                 )
             else:
-                messages.append(
-                    Message(role="assistant", content=record.content or "")
-                )
+                messages.append(Message(role="assistant", content=record.content or ""))
 
     if pending_tool_results:
         messages.append(
@@ -343,9 +452,7 @@ class SessionMeta:
             "created_at": self.created_at.isoformat(),
             "last_active": self.last_active.isoformat(),
         }
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        _atomic_private_json(path, data)
 
     @classmethod
     def load(cls, path: Path) -> SessionMeta | None:
@@ -387,6 +494,7 @@ class Session:
         for record in records:
             self._file.write(record.to_jsonl() + "\n")
         self._file.flush()
+        os.fsync(self._file.fileno())
 
         self.meta.message_count += 1
         self.meta.last_active = datetime.now(timezone.utc)
@@ -405,9 +513,9 @@ class Session:
         """
         self._file.write(record.to_jsonl() + "\n")
         self._file.flush()
+        os.fsync(self._file.fileno())
         self.meta.last_active = datetime.now(timezone.utc)
         self.meta.save(self._sessions_dir / f"{self.session_id}.meta")
-
 
     def close(self) -> None:
         if self._file and not self._file.closed:
@@ -425,6 +533,9 @@ class ResumeResult:
     session: Session
     messages: list[Message]
     last_active: datetime
+    recovery_writes_stopped: bool = False
+    pending_calls: dict[str, str] = field(default_factory=dict)
+    unknown_call_ids: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -441,8 +552,7 @@ def _generate_session_id() -> str:
 class SessionManager:
     def __init__(self, work_dir: str) -> None:
         self._sessions_dir = Path(work_dir) / SESSIONS_DIR
-        self._sessions_dir.mkdir(parents=True, exist_ok=True)
-
+        self._sessions_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     def create(self) -> Session:
         session_id = _generate_session_id()
@@ -450,14 +560,14 @@ class SessionManager:
         meta = SessionMeta(id=session_id)
         meta.save(self._sessions_dir / f"{session_id}.meta")
 
-        file = open(jsonl_path, "a", encoding="utf-8")  # noqa: SIM115
+        descriptor = os.open(jsonl_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        file = os.fdopen(descriptor, "a", encoding="utf-8")
         return Session(
             session_id=session_id,
             file=file,
             meta=meta,
             sessions_dir=self._sessions_dir,
         )
-
 
     def list(self) -> list[SessionMeta]:
         metas: list[SessionMeta] = []
@@ -477,7 +587,8 @@ class SessionManager:
 
         meta = SessionMeta.load(meta_path)
         if meta is None:
-            return None
+            # A damaged cosmetic index must not hide a durable run ledger.
+            meta = SessionMeta(id=session_id, title="Recovered session metadata")
 
         records: list[SessionRecord] = []
         with open(jsonl_path, encoding="utf-8") as f:
@@ -507,6 +618,57 @@ class SessionManager:
         repairs = restored.repair_tool_chain()
         messages = restored.history
 
+        # Notifications and dispatched tools are committed here before the TUI
+        # has necessarily appended its JSONL cursor. Recover the newer durable
+        # projection, and always recover its write fence even if JSONL is newer.
+        from gcode.context.manager import ensure_session_dir
+        from gcode.runtime.journal import load_checkpoint, recovery_state
+        from gcode.runtime.tool_ledger import ToolLedger
+
+        work_dir = self._sessions_dir.parent.parent
+        runtime_path = (
+            ensure_session_dir(str(work_dir), session_id) / "runtime-checkpoint.json"
+        )
+        pending_calls: dict[str, str] = {}
+        ledger = ToolLedger(work_dir / ".gcode" / "runtime" / "tool-calls.sqlite3")
+        runtime_state = {}
+        if runtime_path.exists():
+            runtime_conv, runtime_state = load_checkpoint(runtime_path)
+            if (
+                not messages
+                or runtime_path.stat().st_mtime_ns >= jsonl_path.stat().st_mtime_ns
+            ):
+                messages = runtime_conv.history
+        recovered = recovery_state(ledger, session_id, runtime_state)
+        pending_calls = recovered["pending_calls"]
+        writes_stopped = recovered["recovery_writes_stopped"]
+        # ACK means receipt was durably saved, not that it happened to fall
+        # inside the TUI's later JSONL cursor. Merge those receipts explicitly.
+        from gcode.runtime.notifications import NotificationStore
+
+        notification_store = NotificationStore(
+            work_dir / ".gcode" / "runtime" / "notifications.sqlite3"
+        )
+        consumed = {
+            identifier
+            for message in messages
+            for identifier in message.notification_ids
+        }
+        for receipt in notification_store.list(session_id):
+            if receipt["id"] not in consumed:
+                messages.append(
+                    Message(
+                        "user",
+                        "<system-reminder>\n"
+                        + receipt["text"]
+                        + "\n</system-reminder>",
+                        origin="reminder",
+                        notification_ids=[receipt["id"]],
+                    )
+                )
+                consumed.add(receipt["id"])
+                repairs += 1
+
         file = open(jsonl_path, "a", encoding="utf-8")  # noqa: SIM115
         session = Session(
             session_id=session_id,
@@ -523,6 +685,9 @@ class SessionManager:
             session=session,
             messages=messages,
             last_active=meta.last_active,
+            recovery_writes_stopped=writes_stopped,
+            pending_calls=pending_calls,
+            unknown_call_ids=recovered["unknown_call_ids"],
         )
 
     def delete(self, session_id: str) -> bool:

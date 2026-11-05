@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from gcode.tools.base import Tool, ToolResult
+from gcode.runtime.context import resolve_tool_path
 
 if TYPE_CHECKING:
     from gcode.cache import FileCache
@@ -14,7 +15,9 @@ if TYPE_CHECKING:
 
 class Params(BaseModel):
     file_path: str = Field(description="Absolute or relative path to the file to read")
-    offset: int = Field(default=0, description="Line offset to start reading from (0-based)")
+    offset: int = Field(
+        default=0, description="Line offset to start reading from (0-based)"
+    )
     limit: int = Field(default=2000, description="Maximum number of lines to read")
 
 
@@ -25,38 +28,54 @@ class ReadFile(Tool):
     category = "read"
     is_concurrency_safe = True
 
-
-    def __init__(self, file_cache: FileCache | None = None, file_state_cache: FileStateCache | None = None) -> None:
+    def __init__(
+        self,
+        file_cache: FileCache | None = None,
+        file_state_cache: FileStateCache | None = None,
+    ) -> None:
         self._cache = file_cache
         self._state_cache = file_state_cache
 
-
     async def execute(self, params: Params) -> ToolResult:
-        path = Path(params.file_path)
+        path = resolve_tool_path(params.file_path)
         if not path.exists():
-            return ToolResult(output=f"Error: file not found: {params.file_path}", is_error=True)
+            return ToolResult(
+                output=f"Error: file not found: {params.file_path}", is_error=True
+            )
         if not path.is_file():
-            return ToolResult(output=f"Error: not a file: {params.file_path}", is_error=True)
+            return ToolResult(
+                output=f"Error: not a file: {params.file_path}", is_error=True
+            )
 
         resolved = str(path.resolve())
 
         try:
-            text = self._cache.get(resolved) if self._cache else None
-            if text is None:
-                text = path.read_text(encoding="utf-8")
-                if self._cache:
-                    self._cache.put(resolved, text)
+            from gcode.cache import FileCache, read_stable
+            from gcode.tools.file_state_cache import FileStateCache
+
+            text, snapshot, digest = read_stable(path)
+            if (
+                path.parent.name == "objects"
+                and path.parent.parent.name == "artifact-store"
+                and digest != path.name
+            ):
+                raise ValueError("Content-addressed artifact hash mismatch")
+            if isinstance(self._cache, FileCache):
+                self._cache.put_snapshot(resolved, text, snapshot, digest)
+            elif self._cache is not None:
+                self._cache.put(resolved, text)
+            if isinstance(self._state_cache, FileStateCache):
+                self._state_cache.record_snapshot(
+                    resolved, text, snapshot.st_mtime_ns, digest
+                )
+            elif self._state_cache is not None:
+                self._state_cache.record(resolved, text, snapshot.st_mtime_ns)
         except Exception as e:
             return ToolResult(output=f"Error reading file: {e}", is_error=True)
 
-        if self._state_cache:
-            try:
-                mtime_ns = path.stat().st_mtime_ns
-                self._state_cache.record(resolved, text, mtime_ns)
-            except OSError:
-                pass
-
         lines = text.splitlines()
         selected = lines[params.offset : params.offset + params.limit]
-        numbered = [f"{i + params.offset + 1}\t{line}" for i, line in enumerate(selected)]
+        numbered = [
+            f"{i + params.offset + 1}\t{line}" for i, line in enumerate(selected)
+        ]
         return ToolResult(output="\n".join(numbered))

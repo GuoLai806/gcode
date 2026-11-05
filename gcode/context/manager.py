@@ -3,12 +3,11 @@ from __future__ import annotations
 import copy
 import json
 import os
-import shutil
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Callable
 
 from gcode.conversation import (
     ConversationManager,
@@ -68,6 +67,8 @@ class CompactBoundary:
 
     summary: str
     keep: list[Message]
+    preserved_constraints: list[str] = field(default_factory=list)
+    notification_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -81,6 +82,7 @@ class CompactEvent:
 # ---------------------------------------------------------------------------
 # 内容替换状态 — Design B（决策冻结，不做原地修改）
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ContentReplacementState:
@@ -117,11 +119,17 @@ def append_replacement_records(
     path = session_dir / REPLACEMENT_RECORDS_FILENAME
     with path.open("a", encoding="utf-8") as f:
         for r in records:
-            f.write(json.dumps({
-                "kind": r.kind,
-                "tool_use_id": r.tool_use_id,
-                "replacement": r.replacement,
-            }, ensure_ascii=False) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "kind": r.kind,
+                        "tool_use_id": r.tool_use_id,
+                        "replacement": r.replacement,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
 
 def load_replacement_records(session_dir: Path) -> list[ContentReplacementRecord]:
@@ -135,11 +143,13 @@ def load_replacement_records(session_dir: Path) -> list[ContentReplacementRecord
             if not line:
                 continue
             obj = json.loads(line)
-            out.append(ContentReplacementRecord(
-                kind=obj.get("kind", "tool-result"),
-                tool_use_id=obj["tool_use_id"],
-                replacement=obj["replacement"],
-            ))
+            out.append(
+                ContentReplacementRecord(
+                    kind=obj.get("kind", "tool-result"),
+                    tool_use_id=obj["tool_use_id"],
+                    replacement=obj["replacement"],
+                )
+            )
     return out
 
 
@@ -168,31 +178,59 @@ def reconstruct_replacement_state(
 # Session 目录管理
 # ---------------------------------------------------------------------------
 
-def ensure_session_dir(work_dir: str) -> Path:
+
+def ensure_session_dir(work_dir: str, session_id: str = "") -> Path:
     session_dir = Path(work_dir) / SESSION_SUBDIR
+    if session_id:
+        # Names are identifiers, never caller-supplied filesystem paths.
+        import hashlib
+
+        session_dir = session_dir / hashlib.sha256(session_id.encode()).hexdigest()[:32]
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
 
 
 def cleanup_tool_results(session_dir: Path) -> None:
-    if session_dir.exists():
-        shutil.rmtree(session_dir)
-        session_dir.mkdir(parents=True, exist_ok=True)
+    # Old and new sessions share this directory with recovery checkpoints.
+    # Absence of an artifact index proves neither that files are unreferenced
+    # nor that the whole directory is disposable. GC remains a reviewed dry run.
+    return
 
 
 # ---------------------------------------------------------------------------
 # Layer 1：大型工具结果落盘
 # ---------------------------------------------------------------------------
 
+
 def persist_tool_result(tool_use_id: str, content: str, session_dir: Path) -> Path:
-    file_path = session_dir / f"{tool_use_id}.txt"
+    import hashlib
+    import re
+    from gcode.runtime.artifacts import ArtifactStore
+
+    session_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = (
+        tool_use_id
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,200}", tool_use_id)
+        else hashlib.sha256(tool_use_id.encode()).hexdigest()
+    )
+    file_path = session_dir / f"{safe_name}.txt"
+    if file_path.is_symlink():
+        raise ValueError("Legacy artifact alias cannot be a symlink")
+    if file_path.exists() and file_path.read_bytes() != content.encode("utf-8"):
+        raise ValueError("Conflicting tool result for an existing call id")
+    store = ArtifactStore(session_dir)
+    record = store.put(content, source_tool_call_id=tool_use_id)
+    store.retain(record["artifact_id"], "session", tool_use_id)
     try:
-        fd = os.open(str(file_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+        fd = os.open(str(file_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
     except FileExistsError:
-        pass
-    return file_path
+        if file_path.is_symlink() or file_path.read_bytes() != content.encode("utf-8"):
+            raise ValueError("Conflicting legacy artifact alias")
+    return Path(record["path"])
 
 
 def make_persisted_preview(content: str, file_path: Path) -> str:
@@ -226,6 +264,9 @@ def _copy_message_with_results(
         tool_uses=list(msg.tool_uses),
         tool_results=new_tool_results,
         thinking_blocks=list(msg.thinking_blocks),
+        origin=msg.origin,
+        preserved_constraints=list(msg.preserved_constraints),
+        notification_ids=list(msg.notification_ids),
     )
 
 
@@ -265,11 +306,15 @@ def _snip_stale_messages(
                 f"{preview}\n"
                 f"… (snipped)"
             )
-            new_results.append(ToolResultBlock(
-                tool_use_id=tr.tool_use_id,
-                content=new_content,
-                is_error=tr.is_error,
-            ))
+            new_results.append(
+                ToolResultBlock(
+                    tool_use_id=tr.tool_use_id,
+                    content=new_content,
+                    is_error=tr.is_error,
+                    details=tr.details,
+                    content_blocks=tr.content_blocks,
+                )
+            )
             changed = True
 
         out.append(_copy_message_with_results(msg, new_results) if changed else msg)
@@ -312,9 +357,12 @@ def apply_tool_result_budget(
                 state.seen_ids.add(tr.tool_use_id)
                 state.replacements[tr.tool_use_id] = tr.content
                 decisions[tr.tool_use_id] = tr.content
-                new_records.append(ContentReplacementRecord(
-                    tool_use_id=tr.tool_use_id, replacement=tr.content,
-                ))
+                new_records.append(
+                    ContentReplacementRecord(
+                        tool_use_id=tr.tool_use_id,
+                        replacement=tr.content,
+                    )
+                )
             else:
                 fresh.append(tr)
 
@@ -327,9 +375,12 @@ def apply_tool_result_budget(
                 decisions[tr.tool_use_id] = preview
                 state.replacements[tr.tool_use_id] = preview
                 state.seen_ids.add(tr.tool_use_id)
-                new_records.append(ContentReplacementRecord(
-                    tool_use_id=tr.tool_use_id, replacement=preview,
-                ))
+                new_records.append(
+                    ContentReplacementRecord(
+                        tool_use_id=tr.tool_use_id,
+                        replacement=preview,
+                    )
+                )
                 persisted_p1.add(tr.tool_use_id)
 
         # Pass 2：聚合超限
@@ -348,9 +399,12 @@ def apply_tool_result_budget(
                 decisions[tr.tool_use_id] = preview
                 state.replacements[tr.tool_use_id] = preview
                 state.seen_ids.add(tr.tool_use_id)
-                new_records.append(ContentReplacementRecord(
-                    tool_use_id=tr.tool_use_id, replacement=preview,
-                ))
+                new_records.append(
+                    ContentReplacementRecord(
+                        tool_use_id=tr.tool_use_id,
+                        replacement=preview,
+                    )
+                )
                 total -= old_len - len(preview)
 
         # 剩余未替换的 fresh 标记为"已见但未替换"
@@ -365,13 +419,47 @@ def apply_tool_result_budget(
                 tool_use_id=tr.tool_use_id,
                 content=decisions[tr.tool_use_id],
                 is_error=tr.is_error,
+                details=tr.details,
+                content_blocks=tr.content_blocks,
             )
             for tr in msg.tool_results
         ]
         new_history.append(_copy_message_with_results(msg, new_tool_results))
 
-    # Pass 3：在新 history 上裁剪过期结果（无状态；边界漂移是已知 trade-off）
-    new_history = _snip_stale_messages(new_history)
+    # Pass 3: freeze a single reference-bearing decision when an output ages
+    # out. Moving the recent window must not repeatedly rewrite old prefixes.
+    old_boundary = _count_turns(new_history) - KEEP_RECENT_TURNS
+    aged_history: list[Message] = []
+    turns_seen = 0
+    for message in new_history:
+        if message.role == "assistant" and not message.tool_uses:
+            turns_seen += 1
+        if old_boundary <= 0 or turns_seen > old_boundary or not message.tool_results:
+            aged_history.append(message)
+            continue
+        replacements: list[ToolResultBlock] = []
+        for result in message.tool_results:
+            if len(
+                result.content
+            ) > OLD_RESULT_SNIP_CHARS and not result.content.startswith(PERSISTED_TAG):
+                file_path = persist_tool_result(
+                    result.tool_use_id, result.content, session_dir
+                )
+                preview = make_persisted_preview(result.content, file_path)
+                state.replacements[result.tool_use_id] = preview
+                new_records.append(
+                    ContentReplacementRecord(result.tool_use_id, preview)
+                )
+                result = ToolResultBlock(
+                    result.tool_use_id,
+                    preview,
+                    result.is_error,
+                    result.details,
+                    result.content_blocks,
+                )
+            replacements.append(result)
+        aged_history.append(_copy_message_with_results(message, replacements))
+    new_history = aged_history
 
     new_conv = ConversationManager()
     new_conv.history = new_history
@@ -388,9 +476,20 @@ def apply_tool_result_budget(
 # Layer 2：全对话摘要（Auto-Compact）
 # ---------------------------------------------------------------------------
 
-def compute_compact_threshold(context_window: int, manual: bool = False) -> int:
-    effective = context_window - SUMMARY_OUTPUT_RESERVE
-    margin = MANUAL_COMPACT_SAFETY_MARGIN if manual else AUTO_COMPACT_SAFETY_MARGIN
+
+def compute_compact_threshold(
+    context_window: int, manual: bool = False, output_reserve: int | None = None
+) -> int:
+    if context_window <= 0:
+        raise ValueError("context window must be positive")
+    reserve = min(SUMMARY_OUTPUT_RESERVE, max(1, context_window // 4))
+    if output_reserve is not None:
+        reserve = max(reserve, output_reserve)
+    effective = context_window - reserve
+    margin = min(
+        MANUAL_COMPACT_SAFETY_MARGIN if manual else AUTO_COMPACT_SAFETY_MARGIN,
+        max(1, context_window // 8),
+    )
     return effective - margin
 
 
@@ -403,7 +502,7 @@ SUMMARY_PROMPT = """\
 
 请对下面的对话生成一份结构化摘要。
 
-先在 <analysis> 标签中梳理对话中发生了什么（这部分会被丢弃），然后在 <summary> 标签中输出正式摘要。
+输出必须从字面的 <summary> 开始，以字面的 </summary> 结束。不要输出分析、开场白或 Markdown 代码围栏。
 
 <summary> 必须包含以下 9 个部分：
 
@@ -419,13 +518,69 @@ SUMMARY_PROMPT = """\
 
 提醒：不要调用任何工具。工具调用会被拒绝，你会失败。只输出纯文本。"""
 
+SUMMARY_SECTIONS = (
+    "主要请求和意图",
+    "关键技术概念",
+    "文件和代码段",
+    "错误和修复",
+    "问题解决过程",
+    "所有用户消息",
+    "待办任务",
+    "当前工作",
+    "可能的下一步",
+)
+SUMMARY_PROMPT += "\n<summary> 内必须按 1. 至 9. 的顺序使用上述九个标题，每项内容非空，没有内容时明确写‘无’。"
+SUMMARY_REQUEST = (
+    "请总结以上历史对话。本条是摘要控制指令，不属于待总结历史，不要把它或系统提示列为用户消息。输出严格采用下面的格式，保留外层标签和全部九个编号标题，把占位内容替换为真实摘要；没有内容写‘无’。不要调用工具。\n<summary>\n"
+    + "\n".join(
+        f"{i}. {title}：该部分的摘要" for i, title in enumerate(SUMMARY_SECTIONS, 1)
+    )
+    + "\n</summary>"
+)
+
+
+def validate_summary_structure(summary: str) -> None:
+    import re
+
+    positions = []
+    endings = []
+    for number, title in enumerate(SUMMARY_SECTIONS, 1):
+        match = re.search(
+            rf"(?m)^\s*(?:\#{{1,6}}\s*)?{number}\.\s*(?:\*\*)?{re.escape(title)}",
+            summary,
+        )
+        if not match:
+            raise ValueError(f"Summary is missing required section {number}")
+        positions.append(match.start())
+        endings.append(match.end())
+    if positions != sorted(positions):
+        raise ValueError("Summary sections are out of order")
+    for index, ending in enumerate(endings):
+        stop = positions[index + 1] if index + 1 < len(positions) else len(summary)
+        if not summary[ending:stop].strip(" \t\r\n:*#："):
+            raise ValueError(f"Summary section {index + 1} is empty")
+
 
 def extract_summary(llm_output: str) -> str:
-    start = llm_output.find("<summary>")
-    end = llm_output.find("</summary>")
-    if start == -1 or end == -1:
-        return llm_output
-    return llm_output[start + len("<summary>"):end].strip()
+    import re
+
+    match = re.fullmatch(
+        r"(?:<analysis>.*?</analysis>\s*)?<summary>(.*)</summary>",
+        llm_output.strip(),
+        re.DOTALL,
+    )
+    if not match:
+        raise ValueError("Summary must contain one complete outer summary block")
+    summary = match.group(1).strip()
+    # Quoted inline tag names can be legitimate source text. Do not count them
+    # as top-level wrappers; reject a second adjacent block explicitly.
+    if re.search(r"</summary>\s*<summary>", summary) or re.search(
+        r"(?m)^\s*</?summary>\s*$", summary
+    ):
+        raise ValueError("Multiple summary blocks are not allowed")
+    if not summary:
+        raise ValueError("Empty summary")
+    return summary
 
 
 def build_compact_messages(
@@ -434,7 +589,10 @@ def build_compact_messages(
     has_keep_tail: bool = False,
     transcript_path: str = "",
 ) -> list[Message]:
-    content = "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n" + summary
+    content = (
+        "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\n"
+        + summary
+    )
     if has_keep_tail:
         content += "\n\n近期消息已原样保留。"
     if transcript_path:
@@ -442,7 +600,7 @@ def build_compact_messages(
     if attachment:
         content += "\n\n---\n\n" + attachment
     return [
-        Message(role="user", content=content),
+        Message(role="user", content=content, origin="compaction"),
     ]
 
 
@@ -557,13 +715,13 @@ def build_recovery_attachment(
     if state is not None:
         files = state.snapshot_files(RECOVERY_FILE_LIMIT)
         if files:
-            buf = ["## 最近读过的文件\n",
-                   "以下快照是文件读取工具上次返回的内容。如需当前字节请重新读取。\n"]
+            buf = [
+                "## 最近读过的文件\n",
+                "以下快照是文件读取工具上次返回的内容。如需当前字节请重新读取。\n",
+            ]
             for rec in files:
                 content = _truncate_by_tokens(rec.content, RECOVERY_TOKENS_PER_FILE)
-                ts = time.strftime(
-                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(rec.timestamp)
-                )
+                ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(rec.timestamp))
                 buf.append(f"### {rec.path}  (read {ts})\n")
                 buf.append("```\n")
                 buf.append(content)
@@ -574,8 +732,10 @@ def build_recovery_attachment(
 
         skills = state.snapshot_skills()
         if skills:
-            buf = ["## 已激活的技能\n",
-                   "下列技能在本会话中被调用过，其触发条件仍然适用。\n"]
+            buf = [
+                "## 已激活的技能\n",
+                "下列技能在本会话中被调用过，其触发条件仍然适用。\n",
+            ]
             used = 0
             emitted = False
             for sk in skills:
@@ -590,8 +750,7 @@ def build_recovery_attachment(
                 sections.append("".join(buf))
 
     if tool_schemas:
-        buf = ["## 可用工具\n",
-               "你仍然可以调用以下工具，需要时直接发起调用即可：\n"]
+        buf = ["## 可用工具\n", "你仍然可以调用以下工具，需要时直接发起调用即可：\n"]
         for t in tool_schemas:
             name = t.get("name") if isinstance(t, Mapping) else None
             if not name:
@@ -715,7 +874,6 @@ class CompactCircuitBreaker:
     def record_success(self) -> None:
         self.consecutive_failures = 0
 
-
     def is_open(self) -> bool:
         return self.consecutive_failures >= self.max_failures
 
@@ -723,6 +881,7 @@ class CompactCircuitBreaker:
 # ---------------------------------------------------------------------------
 # Auto-compact 编排器
 # ---------------------------------------------------------------------------
+
 
 async def auto_compact(
     conversation: ConversationManager,
@@ -735,8 +894,16 @@ async def auto_compact(
     recovery: RecoveryState | None = None,
     tool_schemas: list[Mapping[str, Any]] | None = None,
     transcript_path: str = "",
+    usage_recorder: Callable[[int, int, int, int], None] | None = None,
+    usage_unknown_recorder: Callable[[], None] | None = None,
 ) -> CompactEvent | str | None:
-    threshold = compute_compact_threshold(context_window, manual=manual)
+    threshold = compute_compact_threshold(
+        context_window,
+        manual=manual,
+        output_reserve=getattr(client, "max_output_tokens", None),
+    )
+    if threshold <= 0:
+        return "模型输出预算无法放入当前上下文窗口；原历史已保留"
 
     # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
     # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
@@ -756,6 +923,23 @@ async def auto_compact(
     keep_start = _compute_keep_start_index(conversation.history)
     to_summarize = conversation.history[:keep_start]
     keep_tail = conversation.history[keep_start:]
+    from gcode.runtime.constraints import (
+        collect_constraints,
+        render_constraints,
+        ConstraintLimitError,
+    )
+
+    try:
+        constraints = collect_constraints(conversation.history)
+    except (ConstraintLimitError, TypeError) as error:
+        return f"不能安全压缩用户约束: {error}"
+    notification_ids = list(
+        dict.fromkeys(
+            identifier
+            for message in conversation.history
+            for identifier in message.notification_ids
+        )
+    )
 
     # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
     # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
@@ -769,48 +953,65 @@ async def auto_compact(
     ]
     summary_messages.extend(messages_for_summary)
     summary_messages.append(
-        {"role": "user", "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。"}
+        {
+            "role": "user",
+            "content": SUMMARY_REQUEST,
+        }
     )
 
     summary_conv = ConversationManager()
-    summary_conv.history = [
-        Message(role="user", content=SUMMARY_PROMPT),
-    ]
+    summary_conv.history = []
     # 只摘要前缀；保留的尾部在下面重建时原样拼回。
     for msg in copy.deepcopy(to_summarize):
         summary_conv.history.append(msg)
     summary_conv.history.append(
-        Message(role="user", content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。")
+        Message(
+            role="user",
+            content=SUMMARY_REQUEST,
+        )
     )
 
-    max_retries = 3
     llm_output: str | None = None
-
-    for attempt in range(max_retries):
+    for attempt in range(1):
         try:
             from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
 
             collected_text = ""
-            async for event in client.stream(summary_conv, system=SUMMARY_PROMPT):
+            finish_reason: str | None = None
+            summary_client = (
+                client.with_output_limit(
+                    min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                )
+                if hasattr(client, "with_output_limit")
+                else client
+            )
+            async for event in summary_client.stream(
+                summary_conv, system=SUMMARY_PROMPT
+            ):
                 if isinstance(event, TextDelta):
                     collected_text += event.text
                 elif isinstance(event, StreamEnd):
-                    pass
+                    finish_reason = event.stop_reason
+                    if event.usage_valid and usage_recorder is not None:
+                        usage_recorder(
+                            event.input_tokens,
+                            event.output_tokens,
+                            event.cache_read,
+                            event.cache_creation,
+                        )
+                    elif not event.usage_valid and usage_unknown_recorder is not None:
+                        usage_unknown_recorder()
+                elif getattr(event, "tool_name", None):
+                    raise ValueError("Summary attempted to call a tool")
+            if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                raise ValueError(f"Incomplete summary stream: {finish_reason}")
+            validate_summary_structure(extract_summary(collected_text))
             llm_output = collected_text
             break
 
         except Exception as e:
-            err_msg = str(e).lower()
-            if "prompt" in err_msg and "long" in err_msg or "too many" in err_msg:
-                groups = _group_messages_by_turn(summary_conv.history[1:-1])
-                drop_count = max(1, len(groups) // 5)
-                remaining = groups[drop_count:]
-                summary_conv.history = (
-                    [summary_conv.history[0]]
-                    + [m for g in remaining for m in g]
-                    + [summary_conv.history[-1]]
-                )
-                continue
+            if finish_reason is None and usage_unknown_recorder is not None:
+                usage_unknown_recorder()
             if breaker is not None:
                 breaker.record_failure()
             return f"摘要生成失败: {e}"
@@ -821,6 +1022,9 @@ async def auto_compact(
         return "摘要生成失败：多次重试后仍超出上下文限制"
 
     summary = extract_summary(llm_output)
+    literal_constraints = render_constraints(constraints)
+    if literal_constraints:
+        summary += "\n\n" + literal_constraints
     attachment = build_recovery_attachment(recovery, tool_schemas)
     # 重建 = 摘要(user) + 尾部原文。
     new_messages = build_compact_messages(
@@ -830,6 +1034,41 @@ async def auto_compact(
         transcript_path=transcript_path,
     )
     new_messages = new_messages + list(keep_tail)
+    new_messages[0].origin = "compaction"
+    new_messages[0].preserved_constraints = constraints
+    new_messages[0].notification_ids = notification_ids
+
+    # Commit a durable checkpoint before replacing the live projection. A crash
+    # or disk-full error must never leave only a partially generated summary.
+    durable_summary = summary + ("\n\n" + attachment if attachment else "")
+    try:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint = {
+            "version": 1,
+            "summary": durable_summary,
+            "keep": [asdict(m) for m in keep_tail],
+            "tokens_before": before_tokens,
+            "stop_reason": finish_reason,
+            # The projection is lossy even when structurally valid. Preserve the
+            # complete pre-compaction source for inspection and recovery.
+            "source_history": [asdict(m) for m in conversation.history],
+        }
+        checkpoint["preserved_constraints"] = constraints
+        checkpoint["notification_ids"] = notification_ids
+        fd = os.open(
+            session_dir / "compact-checkpoints.jsonl",
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW,
+            0o600,
+        )
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(checkpoint, ensure_ascii=False) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    except (OSError, TypeError) as error:
+        if breaker is not None:
+            breaker.record_failure()
+        return f"摘要持久化失败: {error}"
 
     # replace_history 替换为重建后的对话并将用量锚点清零
     # （baseline_tokens / anchor_count / last_input_tokens），这是必须的：
@@ -837,7 +1076,8 @@ async def auto_compact(
     # 不清零会导致 current_tokens() 对增量的估算出错。
     # 下一次 API 响应会基于重建后的 history 重新锚定。
     conversation.replace_history(new_messages)
-    cleanup_tool_results(session_dir)
+    # Compaction does not revoke references in the retained tail, sibling forks,
+    # or audit transcripts. Artifact reclamation is a separate explicit GC job.
 
     if breaker is not None:
         breaker.record_success()
@@ -846,5 +1086,10 @@ async def auto_compact(
     # 由它持久化为一条 compact_boundary 记录。keep tail 就是拼回重建 history 的那段。
     return CompactEvent(
         before_tokens=before_tokens,
-        boundary=CompactBoundary(summary=summary, keep=list(keep_tail)),
+        boundary=CompactBoundary(
+            summary=durable_summary,
+            keep=list(keep_tail),
+            preserved_constraints=constraints,
+            notification_ids=notification_ids,
+        ),
     )

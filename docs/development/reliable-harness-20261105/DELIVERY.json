@@ -1,0 +1,29 @@
+{
+  "baseline": "221c870f8cc0872e6704a0140f1dd9923ac66a5c",
+  "final_test": {
+    "passed": 794,
+    "failed": 0,
+    "seconds": 35.82,
+    "source_unchanged": true,
+    "source_snapshot_sha256": "35da67518fe605ef6ead4bda0be744e1781dc4292f39b10ad888f3ed5206f29a",
+    "junit": "evidence/integration-delivery.xml"
+  },
+  "independent_review": "evidence/REPORT.md",
+  "review_supplement": "evidence/summary-eeab-review.md",
+  "proof_layers": {
+    "synthetic_and_real_local_processes": "evidence/integration-delivery.xml",
+    "actual_model_readonly_file": "evidence/gcode-real-provider-file-probe-second.json",
+    "actual_model_native_readonly": "evidence/gcode-real-native-agent.json",
+    "native_reversible_actions": "cu-native-reversible.json",
+    "actual_model_compaction": "evidence/gcode-real-compaction-third.json",
+    "compaction_checkpoint_independent_audit": "evidence/gcode-real-compaction-third-audit.json",
+    "clean_wheel_install": "evidence/wheel-clean-install.json"
+  },
+  "limits": [
+    "No full cross-app model A/B",
+    "Retrieval/summary structure is not semantic correctness",
+    "Observed token budget is not an in-flight hard cap",
+    "Application permissions are not OS sandbox"
+  ],
+  "public_evidence": "Home paths redacted; original evidence retained privately outside repository."
+}

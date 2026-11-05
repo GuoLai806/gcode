@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 from mcp import ClientSession, types
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client import streamable_http as streamable_http_module
 from mcp.client.streamable_http import streamable_http_client
 
 from gcode.config import MCPServerConfig, build_child_env, resolve_env_vars
@@ -23,11 +24,9 @@ class MCPClient:
         self._stack: AsyncExitStack | None = None
         self._alive = False
 
-
     @property
     def is_alive(self) -> bool:
         return self._alive
-
 
     async def connect(self) -> None:
         if self._alive:
@@ -42,9 +41,7 @@ class MCPClient:
             else:
                 read, write = await self._connect_http()
 
-            session = await self._stack.enter_async_context(
-                ClientSession(read, write)
-            )
+            session = await self._stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             self._session = session
             self._alive = True
@@ -52,7 +49,6 @@ class MCPClient:
         except Exception:
             await self._cleanup_stack()
             raise
-
 
     async def _connect_stdio(self) -> tuple[Any, Any]:
         assert self._stack is not None
@@ -77,9 +73,12 @@ class MCPClient:
         resolved_headers = {
             k: resolve_env_vars(v) for k, v in self.config.headers.items()
         }
-        http_client = httpx.AsyncClient(
+        # SDK 2 uses httpx2; SDK 1 uses httpx. Use the transport's own
+        # client implementation instead of passing an incompatible instance.
+        http_library = getattr(streamable_http_module, "httpx2", httpx)
+        http_client = http_library.AsyncClient(
             headers=resolved_headers,
-            follow_redirects=True,
+            follow_redirects=http_library is httpx,
         )
         await self._stack.enter_async_context(http_client)
 
@@ -89,12 +88,10 @@ class MCPClient:
         read, write = result[0], result[1]
         return read, write
 
-
     async def list_tools(self) -> list[types.Tool]:
         assert self._session is not None
         result = await self._session.list_tools()
         return list(result.tools)
-
 
     async def call_tool(
         self, name: str, arguments: dict[str, Any]
@@ -113,7 +110,9 @@ class MCPClient:
                 await self._stack.__aexit__(None, None, None)
             except RuntimeError as e:
                 if "cancel scope" in str(e):
-                    logger.debug("Cancel scope cleanup (expected during shutdown): %s", e)
+                    logger.debug(
+                        "Cancel scope cleanup (expected during shutdown): %s", e
+                    )
                 else:
                     raise
             except Exception:

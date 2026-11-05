@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import fcntl
+import json
+import hashlib
+import uuid
 import logging
 import os
+import socket
 import subprocess
 import time
 from datetime import datetime
@@ -34,7 +40,11 @@ class WorktreeManager:
         repo_root: str,
         symlink_directories: list[str] | None = None,
         worktree_dir: str | None = None,
+        owner_lease_seconds: float = 30.0,
     ) -> None:
+        if owner_lease_seconds <= 0:
+            raise ValueError("owner lease must be positive")
+        self._owner_lease_seconds = owner_lease_seconds
         self.repo_root = repo_root
         self.symlink_directories = symlink_directories or []
         self.worktree_dir = worktree_dir or str(
@@ -45,7 +55,9 @@ class WorktreeManager:
         self.active: dict[str, Worktree] = {}
         self.current_session: WorktreeSession | None = None
 
-    def _run_git(self, args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    def _run_git(
+        self, args: list[str], cwd: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, **GIT_ENV}
         return subprocess.run(
             ["git"] + args,
@@ -56,6 +68,222 @@ class WorktreeManager:
             stdin=subprocess.DEVNULL,
             env=env,
         )
+
+    @contextlib.contextmanager
+    def _repository_lock(self):
+        result = self._run_git(["rev-parse", "--git-common-dir"])
+        if result.returncode != 0 or not result.stdout.strip():
+            raise WorktreeError("cannot determine common git directory")
+        common = Path(result.stdout.strip())
+        if not common.is_absolute():
+            common = Path(self.repo_root) / common
+        common = common.resolve()
+        with (common / "gcode-worktree.lock").open("a+") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield common
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _manifest_path(self, common: Path, name: str) -> Path:
+        directory = common / "gcode-worktrees"
+        directory.mkdir(exist_ok=True)
+        return directory / (flatten_slug(name) + ".json")
+
+    @staticmethod
+    def _write_json(path: Path, value: dict) -> None:
+        # A crash can leave an orphan temporary file, but never a partial manifest.
+        temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+        try:
+            with temporary.open("x", encoding="utf-8") as stream:
+                json.dump(value, stream, ensure_ascii=False, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _process_birth(pid: int) -> str | None:
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "lstart="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return (
+            result.stdout.strip()
+            if result.returncode == 0 and result.stdout.strip()
+            else None
+        )
+
+    def _owner_gone(self, record: dict) -> bool:
+        owner = record.get("owner")
+        if not isinstance(owner, dict) or owner.get("host") != socket.gethostname():
+            return False
+        pid = owner.get("pid")
+        birth = owner.get("birth")
+        if (
+            not isinstance(pid, int)
+            or pid <= 0
+            or not birth
+            or time.time() < owner.get("lease_until", float("inf"))
+        ):
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except (PermissionError, OSError):
+            return False
+        # Even a reused PID may have acquired the directory; preserve on ambiguity.
+        return False
+
+    def _owners_gone(self, record: dict) -> bool:
+        processes = record.get("processes", [])
+        if record.get("process_registry_sealed") is not True or not isinstance(
+            processes, list
+        ):
+            return False
+        if not self._owner_gone(record):
+            return False
+        return all(self._owner_gone({"owner": owner}) for owner in processes)
+
+    def register_owner_process(self, name: str, pid: int) -> None:
+        """Register a launched process before it can use the worktree."""
+        with self._repository_lock() as common:
+            path = self._manifest_path(common, name)
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                owner = record["owner"]
+            except (OSError, ValueError, KeyError) as exc:
+                raise WorktreeError("unknown owner") from exc
+            if (
+                record.get("name") != name
+                or record.get("state") != "active"
+                or owner.get("host") != socket.gethostname()
+                or owner.get("pid") != os.getpid()
+                or owner.get("birth") != self._process_birth(os.getpid())
+            ):
+                raise WorktreeError("owner identity mismatch")
+            if record.get("process_registry_sealed"):
+                raise WorktreeError("process registry is sealed")
+            birth = self._process_birth(pid)
+            if pid <= 0 or not birth:
+                raise WorktreeError("process identity unavailable")
+            entry = {
+                "pid": pid,
+                "birth": birth,
+                "host": socket.gethostname(),
+                "lease_until": time.time() + self._owner_lease_seconds,
+            }
+            processes = record.setdefault("processes", [])
+            if any(p.get("pid") == pid and p.get("birth") == birth for p in processes):
+                return
+            processes.append(entry)
+            self._write_json(path, record)
+
+    def seal_process_registry(self, name: str) -> None:
+        """Freeze the owner's complete registry; integration must prevent further spawns."""
+        with self._repository_lock() as common:
+            path = self._manifest_path(common, name)
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                owner = record["owner"]
+            except (OSError, ValueError, KeyError) as exc:
+                raise WorktreeError("unknown owner") from exc
+            if (
+                record.get("name") != name
+                or record.get("state") != "active"
+                or owner.get("host") != socket.gethostname()
+                or owner.get("pid") != os.getpid()
+                or owner.get("birth") != self._process_birth(os.getpid())
+            ):
+                raise WorktreeError("owner identity mismatch")
+            record["process_registry_sealed"] = True
+            self._write_json(path, record)
+
+    def heartbeat_owner(self, name: str) -> None:
+        with self._repository_lock() as common:
+            path = self._manifest_path(common, name)
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                owner = record["owner"]
+            except (OSError, ValueError, KeyError) as exc:
+                raise WorktreeError("unknown owner") from exc
+            if (
+                owner.get("host") != socket.gethostname()
+                or owner.get("pid") != os.getpid()
+                or owner.get("birth") != self._process_birth(os.getpid())
+                or record.get("state") != "active"
+            ):
+                raise WorktreeError("owner identity mismatch")
+            owner["lease_until"] = time.time() + self._owner_lease_seconds
+            self._write_json(path, record)
+
+    def reconcile(self) -> dict[str, str]:
+        """Rehydrate verified manifests; unknown records are reported and preserved."""
+        report = {}
+        with self._repository_lock() as common:
+            result = self._run_git(["worktree", "list", "--porcelain"])
+            if result.returncode:
+                raise WorktreeError("cannot list worktrees")
+            registered = {
+                line[9:]
+                for line in result.stdout.splitlines()
+                if line.startswith("worktree ")
+            }
+            directory = common / "gcode-worktrees"
+            if not directory.exists():
+                return report
+            for path in directory.glob("*.json"):
+                try:
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                    name, wt_path, branch, base = (
+                        record[k] for k in ("name", "path", "branch", "base")
+                    )
+                    if (
+                        validate_slug(name)
+                        or path != self._manifest_path(common, name)
+                        or record["state"] not in ("active", "inactive")
+                    ):
+                        raise ValueError("invalid record")
+                    if str(Path(wt_path).resolve()) not in registered or str(
+                        Path(wt_path).resolve()
+                    ) != str(Path(self.worktree_dir, flatten_slug(name)).resolve()):
+                        raise ValueError("path mismatch")
+                    ref = self._run_git(
+                        ["symbolic-ref", "--short", "HEAD"], cwd=wt_path
+                    )
+                    base_ref = self._run_git(
+                        ["rev-parse", "--verify", f"{base}^{{commit}}"]
+                    )
+                    if (
+                        ref.returncode
+                        or ref.stdout.strip() != branch
+                        or base_ref.returncode
+                        or base_ref.stdout.strip() != base
+                    ):
+                        raise ValueError("identity mismatch")
+                    self.active[name] = Worktree(
+                        name=name,
+                        path=wt_path,
+                        branch=branch,
+                        based_on=base,
+                        head_commit=base,
+                    )
+                    report[name] = "verified"
+                except (OSError, ValueError, KeyError, TypeError):
+                    report[path.stem] = "unknown"
+        return report
 
     # ------------------------------------------------------------------
     # 快速恢复：直接从文件系统读取 HEAD SHA，无需启动 git 子进程
@@ -116,54 +344,60 @@ class WorktreeManager:
             err = validate_slug(name)
             if err:
                 raise WorktreeError(err)
-
-            if name in self.active:
-                raise WorktreeError(f"worktree already exists: {name}")
-
-            flat_slug = flatten_slug(name)
-            wt_path = os.path.join(self.worktree_dir, flat_slug)
-            branch_name = f"worktree-{flat_slug}"
-
-            head_sha = self.read_worktree_head_sha(wt_path)
-            if head_sha is not None:
-                log.info("Fast recovery: reusing existing worktree at %s", wt_path)
+            with self._repository_lock() as common:
+                if name in self.active:
+                    raise WorktreeError(f"worktree already exists: {name}")
+                flat = flatten_slug(name)
+                wt_path = str(Path(self.worktree_dir, flat).resolve())
+                branch = f"worktree-{flat}"
+                manifest = self._manifest_path(common, name)
+                if Path(wt_path).exists() or manifest.exists():
+                    raise WorktreeError(
+                        "worktree or ownership record already exists; manual reconciliation required"
+                    )
+                base = self._run_git(
+                    ["rev-parse", "--verify", f"{base_branch}^{{commit}}"]
+                )
+                if base.returncode != 0:
+                    raise WorktreeError("cannot resolve base commit")
+                Path(self.worktree_dir).mkdir(parents=True, exist_ok=True)
+                # -b fails if the branch exists; never reset a pre-existing branch.
+                result = self._run_git(
+                    ["worktree", "add", "-b", branch, wt_path, base.stdout.strip()]
+                )
+                if result.returncode != 0:
+                    raise WorktreeError(
+                        f"git worktree add failed: {result.stderr.strip()}"
+                    )
+                birth = self._process_birth(os.getpid())
+                record = {
+                    "name": name,
+                    "path": wt_path,
+                    "branch": branch,
+                    "base": base.stdout.strip(),
+                    "state": "active",
+                    "owner": {
+                        "pid": os.getpid(),
+                        "birth": birth,
+                        "host": socket.gethostname(),
+                        "lease_until": time.time() + self._owner_lease_seconds,
+                    },
+                }
+                self._write_json(manifest, record)
+                perform_post_creation_setup(
+                    self.repo_root,
+                    wt_path,
+                    symlink_directories=self.symlink_directories,
+                )
                 wt = Worktree(
                     name=name,
                     path=wt_path,
-                    branch=branch_name,
+                    branch=branch,
                     based_on=base_branch,
-                    head_commit=head_sha,
+                    head_commit=base.stdout.strip(),
                 )
                 self.active[name] = wt
                 return wt
-
-            os.makedirs(self.worktree_dir, exist_ok=True)
-
-            result = self._run_git([
-                "worktree", "add",
-                "-B", branch_name, wt_path, base_branch,
-            ])
-            if result.returncode != 0:
-                raise WorktreeError(
-                    f"git worktree add failed: {result.stderr.strip()}"
-                )
-
-            perform_post_creation_setup(
-                self.repo_root,
-                wt_path,
-                symlink_directories=self.symlink_directories,
-            )
-
-            head_sha = self.read_worktree_head_sha(wt_path) or ""
-            wt = Worktree(
-                name=name,
-                path=wt_path,
-                branch=branch_name,
-                based_on=base_branch,
-                head_commit=head_sha,
-            )
-            self.active[name] = wt
-            return wt
 
     # ------------------------------------------------------------------
     # 进入 worktree
@@ -193,7 +427,6 @@ class WorktreeManager:
     # 退出 worktree
     # ------------------------------------------------------------------
 
-
     async def exit(
         self,
         name: str,
@@ -213,44 +446,121 @@ class WorktreeManager:
                     "Set discard_changes=True to force removal."
                 )
 
-        self.current_session = None
-        save_worktree_session(self._GCode_dir, None)
-
         if action == "remove":
             await self._remove_worktree(name, wt)
+        self.current_session = None
+        save_worktree_session(self._GCode_dir, None)
 
     # ------------------------------------------------------------------
     # 删除 worktree（内部方法）
     # ------------------------------------------------------------------
 
     async def _remove_worktree(self, name: str, wt: Worktree) -> None:
-        result = self._run_git(["worktree", "remove", "--force", wt.path])
-        if result.returncode != 0:
-            log.warning("git worktree remove failed: %s", result.stderr.strip())
+        raise WorktreeError(
+            "direct removal disabled; mark inactive and apply a reviewed cleanup plan"
+        )
 
-        await asyncio.sleep(0.1)
+    def mark_inactive(self, name: str) -> None:
+        with self._repository_lock() as common:
+            manifest = self._manifest_path(common, name)
+            try:
+                record = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise WorktreeError("unknown ownership") from exc
+            if record.get("name") != name or record.get("state") != "active":
+                raise WorktreeError("invalid ownership state")
+            if not self._owners_gone(record):
+                raise WorktreeError(
+                    "owner or registered process may still be alive; preserving worktree"
+                )
+            record["state"] = "inactive"
+            self._write_json(manifest, record)
 
-        flat_slug = flatten_slug(name)
-        branch_name = f"worktree-{flat_slug}"
-        self._run_git(["branch", "-D", branch_name])
+    def plan_cleanup(self, name: str) -> dict:
+        with self._repository_lock() as common:
+            manifest = self._manifest_path(common, name)
+            try:
+                raw = manifest.read_bytes()
+                record = json.loads(raw)
+            except (OSError, ValueError) as exc:
+                raise WorktreeError("unknown ownership") from exc
+            if (
+                record.get("name") != name
+                or record.get("state") != "inactive"
+                or not self._owners_gone(record)
+            ):
+                raise WorktreeError("worktree owner is not verified inactive")
+            wt = self.active.get(name)
+            if not wt or str(Path(wt.path).resolve()) != record.get("path"):
+                raise WorktreeError("worktree is not reconciled")
+            if has_worktree_changes(wt.path, record["base"]):
+                raise WorktreeError("dirty or unknown worktree")
+            head = self._run_git(["rev-parse", "HEAD"], cwd=wt.path)
+            branch = self._run_git(["symbolic-ref", "--short", "HEAD"], cwd=wt.path)
+            if (
+                head.returncode
+                or branch.returncode
+                or head.stdout.strip() != record["base"]
+                or branch.stdout.strip() != record["branch"]
+            ):
+                raise WorktreeError("unknown worktree identity")
+            plan = {
+                "id": uuid.uuid4().hex,
+                "name": name,
+                "manifest_hash": hashlib.sha256(raw).hexdigest(),
+                "head": head.stdout.strip(),
+                "branch": branch.stdout.strip(),
+            }
+            plans = common / "gcode-cleanup-plans"
+            plans.mkdir(exist_ok=True)
+            self._write_json(plans / (plan["id"] + ".json"), plan)
+            return plan
 
-        self.active.pop(name, None)
-
-    # ------------------------------------------------------------------
-    # 自动清理
-    # ------------------------------------------------------------------
-
+    async def apply_cleanup(self, plan_id: str) -> None:
+        if not plan_id or any(c not in "0123456789abcdef" for c in plan_id):
+            raise WorktreeError("invalid plan id")
+        with self._repository_lock() as common:
+            plan_path = common / "gcode-cleanup-plans" / (plan_id + ".json")
+            try:
+                plan = json.loads(plan_path.read_text(encoding="utf-8"))
+                raw = self._manifest_path(common, plan["name"]).read_bytes()
+                record = json.loads(raw)
+            except (OSError, ValueError, KeyError) as exc:
+                raise WorktreeError("unknown cleanup plan") from exc
+            wt = self.active.get(plan["name"])
+            if (
+                not wt
+                or record.get("state") != "inactive"
+                or not self._owners_gone(record)
+                or hashlib.sha256(raw).hexdigest() != plan["manifest_hash"]
+            ):
+                raise WorktreeError("cleanup preconditions changed")
+            head = self._run_git(["rev-parse", "HEAD"], cwd=wt.path)
+            branch = self._run_git(["symbolic-ref", "--short", "HEAD"], cwd=wt.path)
+            if (
+                head.returncode
+                or branch.returncode
+                or head.stdout.strip() != plan["head"]
+                or branch.stdout.strip() != plan["branch"]
+                or has_worktree_changes(wt.path, record["base"])
+            ):
+                raise WorktreeError("cleanup preconditions changed")
+            result = self._run_git(["worktree", "remove", wt.path])
+            if result.returncode:
+                raise WorktreeError(
+                    f"git worktree remove failed: {result.stderr.strip()}"
+                )
+            record["state"] = "removed"
+            self._write_json(self._manifest_path(common, plan["name"]), record)
+            self.active.pop(plan["name"], None)
+            plan_path.unlink()
 
     async def auto_cleanup(self, name: str, head_commit: str) -> CleanupResult:
         wt = self.active.get(name)
-        if wt is None:
-            return CleanupResult(kept=False)
-
-        if has_worktree_changes(wt.path, head_commit):
-            return CleanupResult(kept=True, path=wt.path, branch=wt.branch)
-
-        await self._remove_worktree(name, wt)
-        return CleanupResult(kept=False)
+        # Age or an apparently clean tree is not authorization for cleanup.
+        return CleanupResult(
+            kept=True, path=wt.path if wt else "", branch=wt.branch if wt else ""
+        )
 
     # ------------------------------------------------------------------
     # 列出 / 查询
@@ -258,7 +568,6 @@ class WorktreeManager:
 
     def list_worktrees(self) -> list[Worktree]:
         return list(self.active.values())
-
 
     def get_current_session(self) -> WorktreeSession | None:
         return self.current_session
@@ -271,27 +580,21 @@ class WorktreeManager:
         session = load_worktree_session(self._GCode_dir)
         if session is None:
             return None
-        wt_path = session.worktree_path
-        head_sha = self.read_worktree_head_sha(wt_path)
-        if head_sha is None:
-            save_worktree_session(self._GCode_dir, None)
+        report = self.reconcile()
+        wt = self.active.get(session.worktree_name)
+        if (
+            report.get(session.worktree_name) != "verified"
+            or wt is None
+            or str(Path(session.worktree_path).resolve()) != wt.path
+        ):
+            # Preserve the session for investigation; do not erase unknown state.
             return None
-
-        wt = Worktree(
-            name=session.worktree_name,
-            path=wt_path,
-            branch=f"worktree-{flatten_slug(session.worktree_name)}",
-            based_on="unknown",
-            head_commit=head_sha,
-        )
-        self.active[session.worktree_name] = wt
         self.current_session = session
         return session
 
     # ------------------------------------------------------------------
     # 辅助方法
     # ------------------------------------------------------------------
-
 
     def _get_current_branch(self) -> str:
         try:

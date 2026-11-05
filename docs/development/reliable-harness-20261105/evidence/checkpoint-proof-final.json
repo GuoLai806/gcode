@@ -1,0 +1,9 @@
+{
+  "agent_sha256_before": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+  "agent_sha256_after": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+  "first_restore_stops_writes": true,
+  "write_executed_despite_stop": false,
+  "write_result_is_error": true,
+  "second_restore_stops_writes": true,
+  "scope": "synthetic temp directory, direct API, no external side effect"
+}

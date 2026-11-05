@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from gcode.tools.base import Tool, ToolResult
+from gcode.runtime.context import resolve_tool_path
 
 if TYPE_CHECKING:
     from gcode.cache import FileCache
@@ -26,18 +27,21 @@ class WriteFile(Tool):
     params_model = Params
     category = "write"
 
-
-    def __init__(self, file_cache: FileCache | None = None, file_history: Any = None, file_state_cache: FileStateCache | None = None) -> None:
+    def __init__(
+        self,
+        file_cache: FileCache | None = None,
+        file_history: Any = None,
+        file_state_cache: FileStateCache | None = None,
+    ) -> None:
         self._cache = file_cache
         self.file_history = file_history
         self._state_cache = file_state_cache
 
-
     async def execute(self, params: Params) -> ToolResult:
         if self.file_history is not None:
-            self.file_history.track_edit(params.file_path)
+            self.file_history.track_edit(str(resolve_tool_path(params.file_path)))
 
-        path = Path(params.file_path)
+        path = resolve_tool_path(params.file_path)
 
         if self._state_cache and path.exists():
             resolved = str(path.resolve())

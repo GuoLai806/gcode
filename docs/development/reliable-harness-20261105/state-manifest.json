@@ -1,0 +1,72 @@
+{
+  "baseline_commit": "221c870f8cc0872e6704a0140f1dd9923ac66a5c",
+  "python": "3.9.6",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "timestamp_utc": "2026-11-05T15:32:10.903978+00:00",
+  "focused": {
+    "command": "work/dev/venv/bin/python -m pytest tests/test_runtime_store.py tests/test_durable_teams.py tests/test_worktree_safety.py -q",
+    "result": "17 passed",
+    "junit": "state-focused-junit.xml",
+    "log": "state-focused.log"
+  },
+  "stress": {
+    "case": "four-process shared task creation, 10 fresh pytest runs",
+    "result": "10 passed",
+    "log": "state-stress.log"
+  },
+  "scope": "state and worktree only; not external integration acceptance",
+  "selected": {
+    "command": "pytest tests/test_cli_budget.py tests/test_teams.py tests/test_worktree.py tests/test_provider_finish_integrity.py tests/test_token_budget.py tests/test_spawn_integration.py tests/test_runtime_store.py tests/test_durable_teams.py tests/test_worktree_safety.py tests/test_subagent.py -q",
+    "result": "214 passed",
+    "junit": "state-junit.xml",
+    "log": "state-tests.log"
+  },
+  "existing_tests": {
+    "command": "pytest tests/test_teams.py tests/test_worktree.py -q",
+    "result": "103 passed after intentional test migration",
+    "log": "state-migrated.log",
+    "junit": "state-migrated-junit.xml",
+    "baseline": "evidence/baseline-bounded.xml",
+    "migration": "state-test-migration.md"
+  },
+  "worktree": {
+    "command": "pytest tests/test_worktree_safety.py -q",
+    "result": "7 passed",
+    "log": "state-worktree.log",
+    "junit": "state-worktree-junit.xml"
+  },
+  "spawn": {
+    "command": "pytest tests/test_spawn_integration.py -q",
+    "result": "8 passed",
+    "log": "state-spawn.log",
+    "junit": "state-spawn-junit.xml"
+  },
+  "file_sha256": {
+    "gcode/runtime/store.py": "5af0059022810c30efd5928ac33f79cb02e07b7e585a501bfa2fe324f8a87144",
+    "gcode/runtime/spawn.py": "dd62e4ffa7ed73c60db038e116fec14795e31b1472915a81a69deff14374382d",
+    "gcode/runtime/budget.py": "5a7504efb0a4011c304960e25f6bbdfcc861b312a7c94d8fe85b02f1a304f0f4",
+    "gcode/agents/task_manager.py": "d9c6ee2b047edc9e580061a938af627b76cb88da41471355c9365face926552a",
+    "gcode/teams/shared_task.py": "ab9d5cc6affe3084e6a50a4c3a670a4e5ec8d088b10dc24496921f3688238a0f",
+    "gcode/teams/mailbox.py": "b16fd4fdeb8d3ed32e2a2c31d0d11fca859c9be10686d1a1443c481be701845f",
+    "gcode/teams/manager.py": "039a1804ef100217c5dc1e6d94abedc6b212ff53c2b442884c8d6ec0c0d5889e",
+    "gcode/teams/models.py": "5b17ea0cb9e7caff32440f130bb09bf3efaba44d22a0db0e0a35c996d4498e81",
+    "gcode/teams/spawn_inprocess.py": "a70e2aab28ed0466156aad052d82839afa6f59be38e42b1bd360dbeb8ca52050",
+    "gcode/worktree/changes.py": "5bb4362775d3541faa81ff0eb89c0b0280032462e05bdac92a7ed45c832f72ae",
+    "gcode/worktree/cleanup.py": "c2f28f8115db9308509460d68616fa570c88658f6d72f9eec36a681dc9cd5700",
+    "gcode/worktree/manager.py": "0cf67bd1032e4ed0971c34d6aa6e856e0411f4bd641000109abec8ac2fb4a39e",
+    "gcode/tools/agent_tool.py": "03f1b2c4a55a4a914f52ad5d8b5630a9a45962d7f6af042867fa262c65b9c7b0",
+    "gcode/__main__.py": "3fc02644ece36a6d4ad75d015f086d80823e283a737fef8986e25e37119ceea2",
+    "tests/test_token_budget.py": "300356584b245f004e34abf610e755298ef216913657465e5456279596f25aec",
+    "tests/test_spawn_integration.py": "46c84ede81c7b3bbef9420c950ae295794d61d910982fe06f9acf246b6f144b6",
+    "tests/test_runtime_store.py": "d4af709e3299367bba0347c7d18c0f2b0a2352cbb243172463a9fad98fdec119",
+    "tests/test_durable_teams.py": "9a51566c9978a202d0d9588e95b647f9f9f8be8287ed5d4e9116a9bcc805677d",
+    "tests/test_worktree_safety.py": "8add30f042683a9867783068214c7bd0022848219bffdd56dde8bed3e7e8ec5e",
+    "tests/test_teams.py": "89f63a23dc7e979e40f582a8bd07a28886d4cb6120dfaf2d682bd9993489e432",
+    "tests/test_worktree.py": "b435cd26acef7dc8c819b4b6de2268388823be9b52b616fcec07d8bf85d57078",
+    "tests/test_cli_budget.py": "44411e43ba91d76932851800de7d82087498108099a27d1d20259a020cf8aeb6"
+  },
+  "real_worktree_rebase": {
+    "result": "1 passed using temporary Git repository",
+    "log": "state-rebase.log"
+  }
+}

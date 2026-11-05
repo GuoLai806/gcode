@@ -1,0 +1,12 @@
+{
+  "effect_count": 1,
+  "last_stop_reason": "delivery_unknown",
+  "tool_results": [
+    "Tool invocation failed after dispatch: delivery outcome not known",
+    "Permission denied: Recovered action outcome unknown; inspect before explicit recovery"
+  ],
+  "checkpoint_pending": {},
+  "before": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+  "after": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+  "scope": "synthetic duplicate tool call and temporary file only"
+}

@@ -1,0 +1,29 @@
+{
+  "evidence": "read-only Finder window inventory through CUTransport, DesktopTool.invoke, sidecar, configured native bridge",
+  "native_action_count": 0,
+  "elapsed_ms": 502.79,
+  "tool_is_error": false,
+  "transport_ok": true,
+  "delivery_state": "not_dispatched",
+  "schema_sha256": "350d16ab88d9470c7964db8ca9c9e79e8b0e2b8326748ffbd76197885ed35cae",
+  "tool_names": [
+    "ax_observe",
+    "ax_query",
+    "ax_action"
+  ],
+  "runtime": {
+    "protocol": 1,
+    "platform": "darwin",
+    "provider_sha256": "5ab62ec5a9dd5fb5cd482e91213f5679cb35bd2c124467a4511ca79b64f9882a",
+    "bridge_sha256": "ff4b4fb7ed6012b968604f56b9d60ad28c390d39aa619102a25852945bd20c7b",
+    "native_sha256": "95a1fd5ca0c3871fd99bbd9b0ed2f8f16228b8b646017767b7f45675b9e82b38",
+    "keyboard_sha256": null,
+    "sdk_package_sha256": "248decde30021109984def7ddc8f7bf4caf21ef04910a1303ab19604206c1bd5",
+    "manifest_verified": true,
+    "manifest_sha256": "2b3f43154b8c80127d935810f11655abffe409c2bd0ecf6cd1a2a3604bad1696",
+    "manifest_entry_count": 23,
+    "manifest_entries_sha256": "1500741faa46ce2894e62ff7e9d905004327407260bcc8ff38fa3eb56464609b"
+  },
+  "raw_evidence_sha256": "5d13b78aa5ff4ace3288125de8938ebb15a677b7b1a3d865e0b19097006ee1bb",
+  "limitations": "Registration and read only on earlier provider SHA shown; native read failure classification was subsequently fixed and needs revalidation on current candidate. No action, visual outcome, paired benchmark or model request demonstrated."
+}

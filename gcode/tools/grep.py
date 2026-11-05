@@ -6,12 +6,15 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from gcode.tools.base import SKIP_DIRS, Tool, ToolResult
+from gcode.runtime.context import resolve_tool_path
 
 
 class Params(BaseModel):
     pattern: str = Field(description="Regex pattern to search for")
     path: str = Field(default=".", description="Base directory to search from")
-    include: str = Field(default="", description="Glob filter for filenames (e.g. '*.py')")
+    include: str = Field(
+        default="", description="Glob filter for filenames (e.g. '*.py')"
+    )
 
 
 class Grep(Tool):
@@ -21,11 +24,12 @@ class Grep(Tool):
     category = "read"
     is_concurrency_safe = True
 
-
     async def execute(self, params: Params) -> ToolResult:
-        base = Path(params.path)
+        base = resolve_tool_path(params.path)
         if not base.exists():
-            return ToolResult(output=f"Error: path not found: {params.path}", is_error=True)
+            return ToolResult(
+                output=f"Error: path not found: {params.path}", is_error=True
+            )
 
         try:
             regex = re.compile(params.pattern)
@@ -33,12 +37,18 @@ class Grep(Tool):
             return ToolResult(output=f"Error: invalid regex: {e}", is_error=True)
 
         glob_pattern = params.include if params.include else "**/*"
+        if Path(glob_pattern).is_absolute() or ".." in Path(glob_pattern).parts:
+            return ToolResult(
+                output="Search pattern must stay inside its directory", is_error=True
+            )
         if not glob_pattern.startswith("**/"):
             glob_pattern = "**/" + glob_pattern
 
         results: list[str] = []
         for file_path in sorted(base.glob(glob_pattern)):
             if not file_path.is_file():
+                continue
+            if not file_path.resolve().is_relative_to(base):
                 continue
             if any(part in SKIP_DIRS for part in file_path.parts):
                 continue
@@ -54,4 +64,3 @@ class Grep(Tool):
         if not results:
             return ToolResult(output="No matches found.")
         return ToolResult(output="\n".join(results))
-

@@ -1,4 +1,5 @@
 """Hook 系统的测试 —— 涵盖事件、条件、执行器、引擎、加载器以及与 agent 的集成。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +28,7 @@ from gcode.hooks import (
 # LifecycleEvent
 # ---------------------------------------------------------------------------
 
+
 class TestLifecycleEvent:
     def test_has_15_events(self):
         assert len(LifecycleEvent) == 15
@@ -38,21 +40,31 @@ class TestLifecycleEvent:
 
     def test_all_values(self):
         expected = {
-            "session_start", "session_end",
-            "turn_start", "turn_end",
-            "pre_tool_use", "post_tool_use",
-            "pre_send", "post_receive",
-            "startup", "shutdown", "error", "compact",
-            "permission_request", "file_change", "command_execute",
+            "session_start",
+            "session_end",
+            "turn_start",
+            "turn_end",
+            "pre_tool_use",
+            "post_tool_use",
+            "pre_send",
+            "post_receive",
+            "startup",
+            "shutdown",
+            "error",
+            "compact",
+            "permission_request",
+            "file_change",
+            "command_execute",
         }
         assert {e.value for e in LifecycleEvent} == expected
+
 
 # ---------------------------------------------------------------------------
 # HookContext
 # ---------------------------------------------------------------------------
 
-class TestHookContext:
 
+class TestHookContext:
     def test_get_field_tool(self):
         ctx = HookContext(tool_name="Bash")
         assert ctx.get_field("tool") == "Bash"
@@ -94,9 +106,11 @@ class TestHookContext:
         assert ctx.expand("hello $UNKNOWN world") == "hello $UNKNOWN world"
         assert ctx.expand("$FILE_PATH") == ""
 
+
 # ---------------------------------------------------------------------------
 # 条件解析
 # ---------------------------------------------------------------------------
+
 
 class TestParseCondition:
     def test_single_condition(self):
@@ -129,7 +143,7 @@ class TestParseCondition:
         assert parse_condition("   ") is None
 
     def test_regex_format(self):
-        group = parse_condition('args.command =~ /rm\\s+-rf/')
+        group = parse_condition("args.command =~ /rm\\s+-rf/")
         assert group is not None
         c = group.conditions[0]
         assert c.operator == "=~"
@@ -139,9 +153,11 @@ class TestParseCondition:
         with pytest.raises(ConditionParseError, match="No valid operator"):
             parse_condition("tool Bash")
 
+
 # ---------------------------------------------------------------------------
 # 条件求值
 # ---------------------------------------------------------------------------
+
 
 class TestConditionEvaluate:
     def test_eq(self):
@@ -169,6 +185,7 @@ class TestConditionEvaluate:
         assert c.evaluate(ctx) is True
         c2 = Condition(field="args.path", operator="~=", value="*.go")
         assert c2.evaluate(ctx) is False
+
 
 class TestConditionGroupEvaluate:
     def test_and_all_pass(self):
@@ -220,9 +237,11 @@ class TestConditionGroupEvaluate:
         group = ConditionGroup(conditions=[], logic="and")
         assert group.evaluate(ctx) is True
 
+
 # ---------------------------------------------------------------------------
 # Executors
 # ---------------------------------------------------------------------------
+
 
 class TestCommandExecutor:
     @pytest.mark.asyncio
@@ -254,6 +273,7 @@ class TestCommandExecutor:
         assert result.success is False
         assert "timed out" in result.output
 
+
 class TestPromptExecutor:
     @pytest.mark.asyncio
     async def test_returns_message(self):
@@ -265,21 +285,25 @@ class TestPromptExecutor:
         assert result.success is True
         assert result.output == "Hello WriteFile"
 
+
 class TestHttpExecutor:
     @pytest.mark.asyncio
     async def test_mock_request(self):
         from gcode.hooks.executors import execute_http
 
-        action = Action(type="http", url="https://httpbin.org/post", body='{"test": true}')
+        action = Action(
+            type="http", url="https://httpbin.org/post", body='{"test": true}'
+        )
         ctx = HookContext()
         # 用 mock 避免发起真实的网络请求
-        with patch("GCode.hooks.executors.urlopen") as mock_urlopen:
+        with patch("gcode.hooks.executors.urlopen") as mock_urlopen:
             mock_resp = mock_urlopen.return_value.__enter__.return_value
             mock_resp.status = 200
             mock_resp.read.return_value = b'{"ok": true}'
             result = await execute_http(action, ctx)
             assert result.success is True
             assert "200" in result.output
+
 
 class TestAgentExecutor:
     @pytest.mark.asyncio
@@ -291,6 +315,7 @@ class TestAgentExecutor:
         result = await execute_agent(action, ctx)
         assert result.success is True
         assert "not yet implemented" in result.output
+
 
 class TestExecuteAction:
     @pytest.mark.asyncio
@@ -311,9 +336,11 @@ class TestExecuteAction:
         result = await execute_action(action, ctx)
         assert result.success is False
 
+
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 class TestLoadHooks:
     def test_full_config(self):
@@ -344,7 +371,9 @@ class TestLoadHooks:
 
     def test_invalid_event(self):
         with pytest.raises(HookConfigError, match="invalid event"):
-            load_hooks([{"event": "bad_event", "action": {"type": "command", "command": "x"}}])
+            load_hooks(
+                [{"event": "bad_event", "action": {"type": "command", "command": "x"}}]
+            )
 
     def test_invalid_action_type(self):
         with pytest.raises(HookConfigError, match="invalid action type"):
@@ -352,19 +381,27 @@ class TestLoadHooks:
 
     def test_reject_on_non_pre_tool_use(self):
         with pytest.raises(HookConfigError, match="reject.*pre_tool_use"):
-            load_hooks([{
-                "event": "post_tool_use",
-                "action": {"type": "command", "command": "x"},
-                "reject": True,
-            }])
+            load_hooks(
+                [
+                    {
+                        "event": "post_tool_use",
+                        "action": {"type": "command", "command": "x"},
+                        "reject": True,
+                    }
+                ]
+            )
 
     def test_async_on_pre_tool_use(self):
         with pytest.raises(HookConfigError, match="async.*pre_tool_use"):
-            load_hooks([{
-                "event": "pre_tool_use",
-                "action": {"type": "command", "command": "x"},
-                "async": True,
-            }])
+            load_hooks(
+                [
+                    {
+                        "event": "pre_tool_use",
+                        "action": {"type": "command", "command": "x"},
+                        "async": True,
+                    }
+                ]
+            )
 
     def test_missing_required_field(self):
         with pytest.raises(HookConfigError, match="requires.*command"):
@@ -379,12 +416,13 @@ class TestLoadHooks:
         with pytest.raises(HookConfigError, match="requires.*prompt"):
             load_hooks([{"event": "startup", "action": {"type": "agent"}}])
 
+
 # ---------------------------------------------------------------------------
 # HookEngine
 # ---------------------------------------------------------------------------
 
-class TestHookEngine:
 
+class TestHookEngine:
     def _make_hook(self, **kwargs) -> Hook:
         defaults = {
             "id": "test",
@@ -494,10 +532,15 @@ class TestHookEngine:
         engine = HookEngine([h])
         ctx = HookContext(event_name="post_tool_use")
         await engine.run_hooks("post_tool_use", ctx)
+        # The async executor must remain nonblocking, then explicitly dispose
+        # its owned subprocess rather than orphan it during test-loop teardown.
+        await engine.aclose()
+
 
 # ---------------------------------------------------------------------------
 # Agent 循环集成
 # ---------------------------------------------------------------------------
+
 
 class TestAgentHookIntegration:
     """验证 pre_tool_use 拒绝会导致工具调用被跳过。"""
@@ -522,10 +565,14 @@ class TestAgentHookIntegration:
                         tool_name="Bash",
                         arguments={"command": "rm -rf /"},
                     )
-                    yield StreamEnd(stop_reason="tool_use", input_tokens=10, output_tokens=5)
+                    yield StreamEnd(
+                        stop_reason="tool_use", input_tokens=10, output_tokens=5
+                    )
                 else:
                     yield TextDelta(text="I understand, I won't do that.")
-                    yield StreamEnd(stop_reason="end_turn", input_tokens=10, output_tokens=5)
+                    yield StreamEnd(
+                        stop_reason="end_turn", input_tokens=10, output_tokens=5
+                    )
 
         hook = Hook(
             id="block-rm",

@@ -15,8 +15,10 @@ from gcode.tools.impl.tool_search import ToolSearchTool
 # 辅助工具
 # ---------------------------------------------------------------------------
 
+
 class _DummyParams(BaseModel):
     text: str = ""
+
 
 class _NormalTool(Tool):
     name = "NormalTool"
@@ -28,6 +30,7 @@ class _NormalTool(Tool):
     async def execute(self, params: BaseModel) -> ToolResult:
         return ToolResult(output="ok")
 
+
 class _DeferredTool(Tool):
     name = "DeferredAlpha"
     description = "A deferred tool for testing"
@@ -37,6 +40,7 @@ class _DeferredTool(Tool):
 
     async def execute(self, params: BaseModel) -> ToolResult:
         return ToolResult(output="deferred ok")
+
 
 class _DeferredBeta(Tool):
     name = "DeferredBeta"
@@ -48,6 +52,7 @@ class _DeferredBeta(Tool):
     async def execute(self, params: BaseModel) -> ToolResult:
         return ToolResult(output="deferred beta ok")
 
+
 def _make_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(_NormalTool())
@@ -55,14 +60,17 @@ def _make_registry() -> ToolRegistry:
     reg.register(_DeferredBeta())
     return reg
 
+
 # ---------------------------------------------------------------------------
 # 测试用例
 # ---------------------------------------------------------------------------
+
 
 def test_should_defer_default_false():
     """Tool 基类的 should_defer 默认值应为 False。"""
     tool = _NormalTool()
     assert tool.should_defer is False
+
 
 def test_mcp_tool_deferred():
     """MCPToolWrapper 在构造时会把 should_defer 设为 True。"""
@@ -70,7 +78,9 @@ def test_mcp_tool_deferred():
     # 该对象模仿了 MCPToolWrapper.__init__ 的行为。
     from unittest.mock import MagicMock
 
-    mock_tool_def = MagicMock()
+    from types import SimpleNamespace
+
+    mock_tool_def = SimpleNamespace()
     mock_tool_def.name = "example"
     mock_tool_def.description = "An MCP tool"
     mock_tool_def.inputSchema = {"type": "object", "properties": {}}
@@ -86,6 +96,7 @@ def test_mcp_tool_deferred():
     )
     assert wrapper.should_defer is True
 
+
 def test_deferred_not_in_schemas():
     """尚未被发现的延迟工具不应出现在 get_all_schemas 的结果中。"""
     reg = _make_registry()
@@ -94,6 +105,7 @@ def test_deferred_not_in_schemas():
     assert "NormalTool" in names
     assert "DeferredAlpha" not in names
     assert "DeferredBeta" not in names
+
 
 @pytest.mark.asyncio
 async def test_tool_search_marks_discovered():
@@ -112,6 +124,7 @@ async def test_tool_search_marks_discovered():
     assert reg.is_discovered("DeferredAlpha")
     assert not reg.is_discovered("DeferredBeta")
 
+
 def test_discovered_in_schemas():
     """延迟工具一旦被发现，就应出现在 get_all_schemas 的结果中。"""
     reg = _make_registry()
@@ -129,6 +142,7 @@ def test_discovered_in_schemas():
     # DeferredBeta 仍未被发现
     assert "DeferredBeta" not in names_after
 
+
 def test_get_deferred_tool_names():
     """get_deferred_tool_names 只返回尚未被发现的延迟工具。"""
     reg = _make_registry()
@@ -142,6 +156,7 @@ def test_get_deferred_tool_names():
     deferred2 = reg.get_deferred_tool_names()
     assert "DeferredAlpha" not in deferred2
     assert "DeferredBeta" in deferred2
+
 
 @pytest.mark.asyncio
 async def test_tool_search_keyword():
@@ -159,6 +174,7 @@ async def test_tool_search_keyword():
     assert "DeferredBeta" in result.output
     assert reg.is_discovered("DeferredBeta")
 
+
 @pytest.mark.asyncio
 async def test_tool_search_no_match():
     """当没有匹配项时，ToolSearchTool 会返回可用的工具名称列表。"""
@@ -174,6 +190,7 @@ async def test_tool_search_no_match():
     assert "No matching deferred tools" in result.output
     assert "DeferredAlpha" in result.output
     assert "DeferredBeta" in result.output
+
 
 @pytest.mark.asyncio
 async def test_tool_search_select_multiple():
@@ -192,9 +209,11 @@ async def test_tool_search_select_multiple():
     assert reg.is_discovered("DeferredAlpha")
     assert reg.is_discovered("DeferredBeta")
 
+
 # ---------------------------------------------------------------------------
 # 延迟加载：token 节省量与端到端发现流程
 # ---------------------------------------------------------------------------
+
 
 class _HeavyParams(BaseModel):
     """一个包含大量属性的参数模型，用于模拟真实场景下的 schema。"""
@@ -209,6 +228,7 @@ class _HeavyParams(BaseModel):
     hotel: int = 42
     india: str = ""
     juliet: bool = True
+
 
 def _make_deferred_tool(index: int) -> Tool:
     """动态创建一个具有唯一名称的延迟工具类。"""
@@ -228,6 +248,7 @@ def _make_deferred_tool(index: int) -> Tool:
             return ToolResult(output=f"heavy {index}")
 
     return _T()
+
 
 def test_deferred_token_savings():
     """对于 50 个重型工具，延迟加载应能节省至少 90% 的 schema token。"""
@@ -279,6 +300,7 @@ def test_deferred_token_savings():
         f"(deferred={size_deferred}, all={size_all})"
     )
 
+
 def test_deferred_end_to_end_discovery():
     """端到端测试：延迟工具初始处于隐藏状态，被发现后才出现。"""
     reg = ToolRegistry()
@@ -287,8 +309,8 @@ def test_deferred_end_to_end_discovery():
     reg.register(_NormalTool())
 
     # 2 个延迟工具
-    reg.register(_DeferredTool())   # DeferredAlpha
-    reg.register(_DeferredBeta())   # DeferredBeta
+    reg.register(_DeferredTool())  # DeferredAlpha
+    reg.register(_DeferredBeta())  # DeferredBeta
 
     # --- 初始时：延迟工具不出现在 schemas 中 ---
     schemas = reg.get_all_schemas("anthropic")

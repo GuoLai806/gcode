@@ -1,0 +1,95 @@
+{
+  "kind": "real native reversible UI smoke through GCode DesktopTool+CUTransport+P11.2",
+  "date_utc": "2026-11-05",
+  "model_driven": false,
+  "actions": 2,
+  "business_text_inputs": 0,
+  "independent_final_observation": true,
+  "restored_original_expression_and_result": true,
+  "restored_sidebar_state": true,
+  "rows": [
+    {
+      "step": "cu-live-01",
+      "method": "ax_observe",
+      "requested_control_kind": "window observation",
+      "is_error": false,
+      "delivery_state": "not_dispatched",
+      "complete": true,
+      "show_sidebar_present": true,
+      "hide_sidebar_present": false,
+      "displayed_value_count": 2,
+      "wall_ms": 263.05404194863513,
+      "raw_sha256": "0bfa7e8095de91e02373c5c71bd76dbed8b0a001d3c5f1f74685757b476ebede"
+    },
+    {
+      "step": "cu-live-02",
+      "method": "ax_action",
+      "requested_control_kind": "sidebar toggle",
+      "is_error": false,
+      "delivery_state": "delivered_unverified",
+      "complete": false,
+      "show_sidebar_present": false,
+      "hide_sidebar_present": false,
+      "displayed_value_count": 98,
+      "wall_ms": 4553.179832990281,
+      "raw_sha256": "f36f40687742c0078d56f51ce42386d4c03ea1e2938ebf14dce89b27f48bd731"
+    },
+    {
+      "step": "cu-live-03",
+      "method": "ax_observe",
+      "requested_control_kind": "window observation",
+      "is_error": false,
+      "delivery_state": "not_dispatched",
+      "complete": true,
+      "show_sidebar_present": false,
+      "hide_sidebar_present": true,
+      "displayed_value_count": 0,
+      "wall_ms": 256.8928329856135,
+      "raw_sha256": "344a4b8808115f827c557b979d55dac91d6921d21274d7245fbd21b60942fb36"
+    },
+    {
+      "step": "cu-live-04",
+      "method": "ax_action",
+      "requested_control_kind": "sidebar toggle",
+      "is_error": false,
+      "delivery_state": "delivered_unverified",
+      "complete": true,
+      "show_sidebar_present": true,
+      "hide_sidebar_present": false,
+      "displayed_value_count": 0,
+      "wall_ms": 1159.3940839520656,
+      "raw_sha256": "6b446763232bb92eed2870bf430e7bd3789812b50216c031610c7045b68a81ea"
+    },
+    {
+      "step": "cu-live-05",
+      "method": "ax_observe",
+      "requested_control_kind": "window observation",
+      "is_error": false,
+      "delivery_state": "not_dispatched",
+      "complete": null,
+      "show_sidebar_present": false,
+      "hide_sidebar_present": false,
+      "displayed_value_count": 0,
+      "wall_ms": 1.013167027849704,
+      "raw_sha256": "9809358827f73c3b6aecc39a42f1062cd8f55873f3705d63663b8e30a71aa9f2"
+    },
+    {
+      "step": "cu-live-06",
+      "method": "ax_observe",
+      "requested_control_kind": "window observation",
+      "is_error": false,
+      "delivery_state": "not_dispatched",
+      "complete": true,
+      "show_sidebar_present": true,
+      "hide_sidebar_present": false,
+      "displayed_value_count": 2,
+      "wall_ms": 255.30558300670236,
+      "raw_sha256": "ff304a07dbbd7ac9be578d9bfda897b377e1fa07578259460a747d3edeb8d40f"
+    }
+  ],
+  "limitations": [
+    "one Calculator task, no model-driven E2E or performance comparison",
+    "full tree after showing history was incomplete; bounded full-window observe recovered scope before restoration",
+    "initial launch adapter classification failure and audited nonpayload reconciliation are preserved separately"
+  ]
+}

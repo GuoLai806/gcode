@@ -1,0 +1,21 @@
+{
+  "checkpoint_contains_notification": true,
+  "mailbox_unacked_after_ack": 0,
+  "session_resume_contains_notification": true,
+  "claimed_before_crash": 1,
+  "new_owner_claims_after_expiry": 0,
+  "expired_claim_visible_to_peek": 1,
+  "before": {
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81",
+    "gcode/teams/mailbox.py": "2d3d718166095d0f5bdd918558d1f965a0877d6f687029e1bbcda988923f78e2",
+    "gcode/teams/manager.py": "bdfc63b66a881dd056d7a86749db2939f5f422f89aa83741aeec0f8f28f08ec2"
+  },
+  "after": {
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81",
+    "gcode/teams/mailbox.py": "2d3d718166095d0f5bdd918558d1f965a0877d6f687029e1bbcda988923f78e2",
+    "gcode/teams/manager.py": "bdfc63b66a881dd056d7a86749db2939f5f422f89aa83741aeec0f8f28f08ec2"
+  },
+  "scope": "synthetic temp session and mailbox only"
+}

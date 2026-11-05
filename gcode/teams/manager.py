@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from gcode.teams.backend_detect import BackendDetectionError, detect_backend
 from gcode.teams.mailbox import Mailbox, create_message
@@ -50,7 +51,6 @@ class TeamManager:
             self._detected_backend = detect_backend(teammate_mode, is_interactive)
         return self._detected_backend
 
-
     def create_team(
         self,
         name: str,
@@ -87,12 +87,13 @@ class TeamManager:
         log.info("Created team '%s' at %s (backend=%s)", slug, team_dir, backend.value)
         return team
 
-
     def get_team(self, name: str) -> AgentTeam | None:
         if name in self._teams:
             return self._teams[name]
         team_dir = resolve_team_dir(name)
         config_path = team_dir / "config.json"
+        if (team_dir / ".deleted").exists():
+            return None
         if config_path.exists():
             team = AgentTeam.load(str(config_path))
             self._teams[name] = team
@@ -104,7 +105,7 @@ class TeamManager:
             return self._task_stores[team_name]
         team_dir = resolve_team_dir(team_name)
         tasks_path = team_dir / "tasks.json"
-        if tasks_path.exists():
+        if tasks_path.exists() or Path(str(tasks_path) + ".sqlite3").exists():
             store = SharedTaskStore(tasks_path)
             self._task_stores[team_name] = store
             return store
@@ -134,7 +135,12 @@ class TeamManager:
 
         AgentNameRegistry.instance().register(member.name, member.agent_id)
         self._teammate_team_map[member.agent_id] = team_name
-        log.info("Registered member '%s' (agent=%s) in team '%s'", member.name, member.agent_id, team_name)
+        log.info(
+            "Registered member '%s' (agent=%s) in team '%s'",
+            member.name,
+            member.agent_id,
+            team_name,
+        )
 
     def set_member_idle(self, team_name: str, member_name: str) -> None:
         team = self.get_team(team_name)
@@ -154,12 +160,13 @@ class TeamManager:
             )
             mailbox.write(team.lead_agent_id, msg)
 
-    def register_inprocess_handle(self, agent_id: str, handle: InProcessTeammateHandle) -> None:
+    def register_inprocess_handle(
+        self, agent_id: str, handle: InProcessTeammateHandle
+    ) -> None:
         self._inprocess_handles[agent_id] = handle
 
     def register_pane_id(self, agent_id: str, pane_id: str) -> None:
         self._pane_ids[agent_id] = pane_id
-
 
     def get_pane_id(self, agent_id: str) -> str | None:
         return self._pane_ids.get(agent_id)
@@ -196,7 +203,10 @@ class TeamManager:
             mailbox.cleanup_all()
 
         team_dir = resolve_team_dir(team_name)
-        self._remove_dir(team_dir)
+        (team_dir / ".deleted").write_text(
+            "Team retired; state retained for recovery.\n", encoding="utf-8"
+        )
+        log.info("Preserving retired team state at %s for recovery", team_dir)
 
         self._teams.pop(team_name, None)
         self._task_stores.pop(team_name, None)
@@ -213,24 +223,38 @@ class TeamManager:
                     return name
         return None
 
-
-    def drain_lead_mailbox(self) -> list[str]:
+    def drain_lead_mailbox(
+        self, persist: Callable[[str], None] | None = None
+    ) -> list[str]:
+        """Persist notifications before ACK; without a checkpoint, only peek."""
         notes: list[str] = []
-        for team_name in list(self._teams.keys()):
+        owner = uuid.uuid4().hex
+        for team_name in list(self._teams):
             team = self.get_team(team_name)
-            if team is None:
+            mailbox = self.get_mailbox(team_name) if team else None
+            if team is None or mailbox is None:
                 continue
-            mailbox = self.get_mailbox(team_name)
-            if mailbox is None:
-                continue
-            msgs = mailbox.consume(team.lead_agent_id)
-            if not msgs:
+            messages = (
+                mailbox.claim(team.lead_agent_id, owner)
+                if persist
+                else mailbox.read(team.lead_agent_id)
+            )
+            if not messages:
                 continue
             parts = [f'<team-notification team="{team_name}">']
-            for m in msgs:
-                parts.append(f"from={m.from_agent}: {m.content}")
+            for message in messages:
+                parts.append(
+                    f"id={message.id} from={message.from_agent}: {message.content}"
+                )
             parts.append("</team-notification>")
-            notes.append("\n".join(parts))
+            note = "\n".join(parts)
+            if persist:
+                # Failure leaves claims intact: processing outcome is unknown.
+                persist(note)
+                for message in messages:
+                    if not mailbox.ack(team.lead_agent_id, message.id, owner):
+                        raise TeamError(f"Could not acknowledge message {message.id}")
+            notes.append(note)
         return notes
 
     def get_all_teammate_progress(self) -> list[TeammateProgress]:
@@ -253,33 +277,24 @@ class TeamManager:
         if member:
             self.set_member_idle(team_name, member.name)
 
-
     def _kill_pane(self, pane_id: str, backend_type: str) -> None:
         try:
             if backend_type == BackendType.TMUX.value:
                 from gcode.teams.spawn_tmux import kill_pane
+
                 kill_pane(pane_id)
         except Exception as e:
             log.warning("Failed to kill pane %s: %s", pane_id, e)
 
     def _cleanup_worktree(self, worktree_path: str) -> None:
-        import subprocess
-        try:
-            subprocess.run(
-                ["git", "worktree", "remove", worktree_path, "--force"],
-                capture_output=True, timeout=10,
-            )
-        except Exception as e:
-            log.warning("git worktree remove failed for %s: %s", worktree_path, e)
-            import shutil
-            try:
-                if Path(worktree_path).exists():
-                    shutil.rmtree(worktree_path, ignore_errors=True)
-            except Exception:
-                pass
+        # Unknown ownership and unreviewed work are never deleted here.
+        log.warning(
+            "Preserving worktree %s; explicit reviewed cleanup required", worktree_path
+        )
 
     def _remove_dir(self, path: Path) -> None:
         import shutil
+
         try:
             if path.exists():
                 shutil.rmtree(path, ignore_errors=True)

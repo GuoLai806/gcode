@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="65" time="1.060" timestamp="2026-11-06T01:35:45.678152+08:00" hostname="MacBook-Pro.local"><testcase classname="tests.test_context.TestPersistToolResult" name="test_writes_file" time="0.008" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_idempotent" time="0.009" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_conflicting_call_content_is_rejected" time="0.007" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_contains_tag_and_path" time="0.000" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_preview_truncated" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_single_oversized_persisted" time="0.006" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_under_limit_untouched" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_aggregate_limit" time="0.009" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_already_persisted_skipped" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_auto_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_manual_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_smaller_window" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_below_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_at_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_above_threshold" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_extracts_between_tags" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_no_tags_returns_full" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_only_summary_tag" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_starts_closed" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_opens_after_max_failures" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_success_resets" time="0.000" /><testcase classname="tests.test_context.TestBuildCompactMessages" name="test_basic_structure" time="0.000" /><testcase classname="tests.test_context.TestSessionDir" name="test_ensure_creates_dir" time="0.000" /><testcase classname="tests.test_context.TestSessionDir" name="test_cleanup" time="0.001" /><testcase classname="tests.test_context.TestSessionDir" name="test_cleanup_preserves_legacy_recovery_checkpoint" time="0.001" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_cold_start_falls_back_to_char_estimate" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_aggregates_all_usage_components" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_current_tokens_is_baseline_plus_increment" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_beats_char_estimate_after_cache_hit" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_replace_history_resets_anchor" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_empty" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_counts_text_thinking_tools_and_results" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_stream_end_carries_cache_fields" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_collector_propagates_cache_fields_into_response" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_empty_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_stops_at_token_floor" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_message_floor_when_tail_is_tiny" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_max_cap_stops_swallowing_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_short_history_keeps_everything" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_orphan_tool_result_pulled_back_to_tool_use" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_non_tool_boundary_untouched" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_pairing_preserved_via_compute" time="0.000" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_recent_messages_kept_verbatim" time="0.002"><failure message="AssertionError: assert False&#10; +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', &lt;class 'gcode.context.manager.CompactEvent'&gt;)">self = &lt;test_context.TestAutoCompactKeepRecent object at 0x1078b6ed0&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_recent_messages_kept_verb0')
+
+    async def test_recent_messages_kept_verbatim(self, tmp_path: Path) -&gt; None:
+        conv = _make_long_conversation()
+        # 快照记录保留窗口选中了哪些尾部消息，让断言跟随算法本身，
+        # 而不是依赖写死的数量。
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        assert kept_before, "fixture should keep a non-empty tail"
+    
+        client = _SummaryClient()
+        # 钉一个很高的锚点，使自动压缩阈值被触发。
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # 已完成压缩。
+        from gcode.context.manager import CompactEvent
+    
+&gt;       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', &lt;class 'gcode.context.manager.CompactEvent'&gt;)
+
+tests/test_context.py:633: AssertionError</failure></testcase><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_summary_only_covers_prefix" time="0.002"><failure message="assert None is not None&#10; +  where None = &lt;test_context._SummaryClient object at 0x10a8d7b90&gt;.summarized_history">self = &lt;test_context.TestAutoCompactKeepRecent object at 0x1078dd310&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_summary_only_covers_prefi0')
+
+    async def test_summary_only_covers_prefix(self, tmp_path: Path) -&gt; None:
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_contents = {m.content for m in conv.history[keep_start:]}
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # 喂给摘要器的历史绝不能包含任何被保留的尾部消息
+        # （摘要只覆盖 messages[:keep_start]）。
+&gt;       assert client.summarized_history is not None
+E       assert None is not None
+E        +  where None = &lt;test_context._SummaryClient object at 0x10a8d7b90&gt;.summarized_history
+
+tests/test_context.py:659: AssertionError</failure></testcase><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_tool_pair_not_split" time="0.002" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_anchor_reset_after_compact" time="0.002"><failure message="AssertionError: assert 200000 == 0&#10; +  where 200000 = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22).baseline_tokens">self = &lt;test_context.TestAutoCompactKeepRecent object at 0x1078dd9a0&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_anchor_reset_after_compac0')
+
+    async def test_anchor_reset_after_compact(self, tmp_path: Path) -&gt; None:
+        conv = _make_long_conversation()
+        conv.record_usage_anchor(input_tokens=200_000)
+        assert conv.baseline_tokens &gt; 0 and conv.anchor_count &gt; 0
+        client = _SummaryClient()
+    
+        await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # replace_history 必须已经把过期的锚点清零。
+&gt;       assert conv.baseline_tokens == 0
+E       AssertionError: assert 200000 == 0
+E        +  where 200000 = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22).baseline_tokens
+
+tests/test_context.py:712: AssertionError</failure></testcase><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_too_few_messages_degrades_to_no_compaction" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_event_carries_boundary_summary_and_keep" time="0.001"><failure message="AssertionError: assert False&#10; +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', &lt;class 'gcode.context.manager.CompactEvent'&gt;)">self = &lt;test_context.TestAutoCompactKeepRecent object at 0x107929f10&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_event_carries_boundary_su0')
+
+    async def test_event_carries_boundary_summary_and_keep(
+        self, tmp_path: Path
+    ) -&gt; None:
+        # 返回的 CompactEvent 必须把一个结构化的 boundary（摘要 + 精确逐字
+        # 保留的尾部）交给会话层，使其能持久化一条 compact_boundary 记录。
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        from gcode.context.manager import CompactEvent
+    
+&gt;       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', &lt;class 'gcode.context.manager.CompactEvent'&gt;)
+
+tests/test_context.py:758: AssertionError</failure></testcase><testcase classname="tests.test_constraint_ledger" name="test_preserves_full_user_paragraphs_negation_and_correction" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_prior_ledger_survives_three_compactions" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_tool_reminder_legacy_summary_and_non_user_text_are_not_promoted" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_complete_oversized_constraint_fails_without_mutating_history" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_english_cues_and_deduplicate_without_slicing" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_exact_capacity_and_crlf_paragraphs_are_preserved" time="0.000" /><testcase classname="tests.test_constraint_ledger" name="test_natural_constraints_and_corrections_do_not_require_keywords" time="0.000" /><testcase classname="tests.test_checkpoint_integrity" name="test_incomplete_summary_never_replaces_history[-end_turn]" time="0.001" /><testcase classname="tests.test_checkpoint_integrity" name="test_incomplete_summary_never_replaces_history[partial-max_tokens]" time="0.001" /><testcase classname="tests.test_checkpoint_integrity" name="test_incomplete_summary_never_replaces_history[partial-length]" time="0.001" /><testcase classname="tests.test_checkpoint_integrity" name="test_incomplete_summary_never_replaces_history[partial-None]" time="0.001" /><testcase classname="tests.test_checkpoint_integrity" name="test_literal_constraint_survives_three_compactions_and_disk_roundtrip" time="0.001"><failure message="AssertionError: assert False&#10; +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)">tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_literal_constraint_surviv0')
+
+    @pytest.mark.asyncio
+    async def test_literal_constraint_survives_three_compactions_and_disk_roundtrip(
+        tmp_path,
+    ):
+        from gcode.memory.session import make_compact_boundary, records_to_messages
+    
+        conv = long_conversation()
+        literal = "不要删除原始数据；只允许创建新版本。"
+        conv.history.insert(0, Message("user", literal, origin="user"))
+        for _ in range(3):
+            result = await auto_compact(
+                conv,
+                SummaryClient("&lt;summary&gt;All good.&lt;/summary&gt;", "end_turn"),
+                50000,
+                tmp_path,
+                manual=True,
+            )
+&gt;           assert isinstance(result, CompactEvent)
+E           AssertionError: assert False
+E            +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)
+
+tests/test_checkpoint_integrity.py:78: AssertionError</failure></testcase><testcase classname="tests.test_checkpoint_integrity" name="test_compact_retains_artifact_and_commits_before_projection" time="0.001"><failure message="AssertionError: assert False&#10; +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)">tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_compact_retains_artifact_0')
+
+    @pytest.mark.asyncio
+    async def test_compact_retains_artifact_and_commits_before_projection(tmp_path):
+        conv = long_conversation()
+        artifact = tmp_path / "call.txt"
+        artifact.write_text("original evidence")
+        conv.history.extend(
+            [
+                Message("assistant", "", tool_uses=[ToolUseBlock("call", "ReadFile", {})]),
+                Message(
+                    "user",
+                    "",
+                    tool_results=[
+                        ToolResultBlock(
+                            "call", f"&lt;persisted-output&gt;{artifact}&lt;/persisted-output&gt;"
+                        )
+                    ],
+                ),
+            ]
+        )
+        result = await auto_compact(
+            conv,
+            SummaryClient("&lt;summary&gt;constraints retained&lt;/summary&gt;", "end_turn"),
+            50000,
+            tmp_path,
+            manual=True,
+        )
+&gt;       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)
+
+tests/test_checkpoint_integrity.py:122: AssertionError</failure></testcase><testcase classname="tests.test_checkpoint_integrity" name="test_checkpoint_write_failure_preserves_original_history" time="0.001" /><testcase classname="tests.test_session_recovery_integration" name="test_acked_notification_survives_newer_jsonl_and_repeated_resume" time="0.029" /><testcase classname="tests.test_session_recovery_integration" name="test_unknown_write_cannot_replay_or_report_completed_without_checker" time="0.020" /><testcase classname="tests.test_session_recovery_integration" name="test_production_session_resume_keeps_fence_across_second_save" time="0.031" /></testsuite></testsuites>

@@ -1,0 +1,10 @@
+{
+  "compaction_committed": true,
+  "checkpoint_exists": true,
+  "constraint_in_new_history": true,
+  "constraint_in_checkpoint": true,
+  "summary": "All good.",
+  "manager_sha256_before": "d7be210a24a263e5fee3edd898102896bf9314054c697171a9428f140cfcf334",
+  "manager_sha256_after": "d7be210a24a263e5fee3edd898102896bf9314054c697171a9428f140cfcf334",
+  "scope": "synthetic summary provider; no network"
+}

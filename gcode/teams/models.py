@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import fcntl
+import os
+import uuid
 import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -57,13 +60,13 @@ class AgentTeam:
     members: list[TeammateInfo] = field(default_factory=list)
     config_path: str = ""
     description: str = ""
+    _revision: int = field(default=0, repr=False, compare=False)
 
     def get_member(self, name: str) -> TeammateInfo | None:
         for m in self.members:
             if m.name == name or m.agent_id == name:
                 return m
         return None
-
 
     def add_member(self, member: TeammateInfo) -> None:
         self.members.append(member)
@@ -75,7 +78,6 @@ class AgentTeam:
                 return True
         return False
 
-
     def set_member_active(self, name: str, is_active: bool | None) -> bool:
         member = self.get_member(name)
         if member is None:
@@ -85,7 +87,6 @@ class AgentTeam:
 
     def all_idle(self) -> bool:
         return all(m.is_active is False for m in self.members)
-
 
     def active_members(self) -> list[TeammateInfo]:
         return [m for m in self.members if m.is_active is not False]
@@ -97,8 +98,8 @@ class AgentTeam:
             "members": [m.to_dict() for m in self.members],
             "config_path": self.config_path,
             "description": self.description,
+            "revision": self._revision,
         }
-
 
     @classmethod
     def from_dict(cls, data: dict) -> AgentTeam:
@@ -109,12 +110,41 @@ class AgentTeam:
             members=members,
             config_path=data.get("config_path", ""),
             description=data.get("description", ""),
+            _revision=data.get("revision", 0),
         )
 
     def save(self) -> None:
         path = Path(self.config_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+        with path.with_name(path.name + ".lock").open("a+") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                current = (
+                    json.loads(path.read_text(encoding="utf-8")).get("revision", 0)
+                    if path.exists()
+                    else 0
+                )
+                if current != self._revision:
+                    raise RuntimeError("team state changed; reload before saving")
+                data = self.to_dict()
+                data["revision"] = current + 1
+                temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+                try:
+                    with temporary.open("x", encoding="utf-8") as stream:
+                        json.dump(data, stream, indent=2, ensure_ascii=False)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, path)
+                    directory_fd = os.open(path.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                    self._revision = current + 1
+                finally:
+                    temporary.unlink(missing_ok=True)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     @classmethod
     def load(cls, config_path: str) -> AgentTeam:

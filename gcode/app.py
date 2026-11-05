@@ -6,7 +6,12 @@ import os
 import random
 import time as _time
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gcode.plan_dialog import InlinePlanWidget
+    from gcode.askuser_dialog import InlineAskUserWidget
+    from gcode.permission_dialog import InlinePermissionWidget
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -94,12 +99,22 @@ MAX_AT_REF_BYTES = 10240
 
 _AT_REF_RE = re.compile(r"@([\w./_\-]+(?:\.[\w]+)*)")
 
-_SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".gcode", "build", ".gradle"}
+_SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "__pycache__",
+    ".gcode",
+    "build",
+    ".gradle",
+}
 
 
 def scan_files_for_at(prefix: str, work_dir: str, limit: int = 10) -> list[str]:
     matches: list[str] = []
-    base = os.path.join(work_dir, os.path.dirname(prefix)) if "/" in prefix else work_dir
+    base = (
+        os.path.join(work_dir, os.path.dirname(prefix)) if "/" in prefix else work_dir
+    )
     name_prefix = os.path.basename(prefix).lower()
     if not os.path.isdir(base):
         return matches
@@ -108,7 +123,11 @@ def scan_files_for_at(prefix: str, work_dir: str, limit: int = 10) -> list[str]:
             if entry in _SKIP_DIRS or entry.startswith("."):
                 continue
             if entry.lower().startswith(name_prefix):
-                rel = os.path.join(os.path.dirname(prefix), entry) if "/" in prefix else entry
+                rel = (
+                    os.path.join(os.path.dirname(prefix), entry)
+                    if "/" in prefix
+                    else entry
+                )
                 if os.path.isdir(os.path.join(base, entry)):
                     rel += "/"
                 matches.append(rel)
@@ -126,10 +145,13 @@ def expand_at_refs(text: str, work_dir: str) -> str:
         if not os.path.isfile(full_path):
             return m.group(0)
         try:
-            content = open(full_path, encoding="utf-8", errors="replace").read(MAX_AT_REF_BYTES)
+            content = open(full_path, encoding="utf-8", errors="replace").read(
+                MAX_AT_REF_BYTES
+            )
             return f"[File: {rel_path}]\n```\n{content}\n```"
         except Exception:
             return m.group(0)
+
     return _AT_REF_RE.sub(_replace, text)
 
 
@@ -289,7 +311,7 @@ class ChatInput(TextArea):
         at_idx = text.rfind("@")
         if at_idx < 0:
             return
-        after = text[at_idx + 1:]
+        after = text[at_idx + 1 :]
         if " " in after or "\n" in after:
             return
         if after:
@@ -353,8 +375,9 @@ def _format_detail(tool_name: str, arguments: dict[str, Any], output: str) -> st
 
 
 class ToolCallBlock(Static, can_focus=True):
-
-    def __init__(self, tool_name: str, arguments: dict[str, Any], **kwargs: Any) -> None:
+    def __init__(
+        self, tool_name: str, arguments: dict[str, Any], **kwargs: Any
+    ) -> None:
         super().__init__(**kwargs)
         self.tool_name = tool_name
         self._arguments = arguments
@@ -435,33 +458,114 @@ def _to_past_tense(verb: str) -> str:
 
 
 THINKING_VERBS = [
-    "Accomplishing", "Architecting", "Baking", "Beboppin'", "Befuddling",
-    "Bloviating", "Boogieing", "Boondoggling", "Bootstrapping", "Brewing",
-    "Calculating", "Canoodling", "Caramelizing", "Cascading", "Cerebrating",
-    "Choreographing", "Churning", "Coalescing", "Cogitating", "Combobulating",
-    "Composing", "Computing", "Concocting", "Considering", "Contemplating",
-    "Cooking", "Crafting", "Creating", "Crunching", "Crystallizing",
-    "Cultivating", "Deciphering", "Deliberating", "Dilly-dallying",
-    "Discombobulating", "Doodling", "Elucidating", "Enchanting", "Envisioning",
-    "Fermenting", "Finagling", "Flambéing", "Flibbertigibbeting", "Flummoxing",
-    "Forging", "Frolicking", "Gallivanting", "Garnishing", "Generating",
-    "Germinating", "Grooving", "Harmonizing", "Hatching", "Honking",
-    "Hullaballooing", "Ideating", "Imagining", "Improvising", "Incubating",
-    "Inferring", "Infusing", "Kneading", "Lollygagging", "Manifesting",
-    "Marinating", "Meandering", "Metamorphosing", "Mewing", "Moonwalking",
-    "Moseying", "Mulling", "Musing", "Noodling", "Orbiting",
-    "Orchestrating", "Percolating", "Philosophising", "Pondering",
-    "Pontificating", "Pouncing", "Purring", "Puzzling", "Razzle-dazzling",
-    "Ruminating", "Scampering", "Simmering", "Sketching", "Spelunking",
-    "Spinning", "Sprouting", "Synthesizing", "Thinking", "Tinkering",
-    "Transfiguring", "Transmuting", "Undulating", "Unfurling", "Unravelling",
-    "Vibing", "Wandering", "Whisking", "Working", "Wrangling", "Zigzagging",
+    "Accomplishing",
+    "Architecting",
+    "Baking",
+    "Beboppin'",
+    "Befuddling",
+    "Bloviating",
+    "Boogieing",
+    "Boondoggling",
+    "Bootstrapping",
+    "Brewing",
+    "Calculating",
+    "Canoodling",
+    "Caramelizing",
+    "Cascading",
+    "Cerebrating",
+    "Choreographing",
+    "Churning",
+    "Coalescing",
+    "Cogitating",
+    "Combobulating",
+    "Composing",
+    "Computing",
+    "Concocting",
+    "Considering",
+    "Contemplating",
+    "Cooking",
+    "Crafting",
+    "Creating",
+    "Crunching",
+    "Crystallizing",
+    "Cultivating",
+    "Deciphering",
+    "Deliberating",
+    "Dilly-dallying",
+    "Discombobulating",
+    "Doodling",
+    "Elucidating",
+    "Enchanting",
+    "Envisioning",
+    "Fermenting",
+    "Finagling",
+    "Flambéing",
+    "Flibbertigibbeting",
+    "Flummoxing",
+    "Forging",
+    "Frolicking",
+    "Gallivanting",
+    "Garnishing",
+    "Generating",
+    "Germinating",
+    "Grooving",
+    "Harmonizing",
+    "Hatching",
+    "Honking",
+    "Hullaballooing",
+    "Ideating",
+    "Imagining",
+    "Improvising",
+    "Incubating",
+    "Inferring",
+    "Infusing",
+    "Kneading",
+    "Lollygagging",
+    "Manifesting",
+    "Marinating",
+    "Meandering",
+    "Metamorphosing",
+    "Mewing",
+    "Moonwalking",
+    "Moseying",
+    "Mulling",
+    "Musing",
+    "Noodling",
+    "Orbiting",
+    "Orchestrating",
+    "Percolating",
+    "Philosophising",
+    "Pondering",
+    "Pontificating",
+    "Pouncing",
+    "Purring",
+    "Puzzling",
+    "Razzle-dazzling",
+    "Ruminating",
+    "Scampering",
+    "Simmering",
+    "Sketching",
+    "Spelunking",
+    "Spinning",
+    "Sprouting",
+    "Synthesizing",
+    "Thinking",
+    "Tinkering",
+    "Transfiguring",
+    "Transmuting",
+    "Undulating",
+    "Unfurling",
+    "Unravelling",
+    "Vibing",
+    "Wandering",
+    "Whisking",
+    "Working",
+    "Wrangling",
+    "Zigzagging",
 ]  # 共 105 个动词，与 Go 版 internal/tui/verbs.go 完全一致
 
 
 class ToolGroupSummary(Static, can_focus=True):
-
-
     def __init__(self, count: int, total_elapsed: float, **kwargs: Any) -> None:
         label = f"● Done ({count} tool uses · {total_elapsed:.1f}s)  (ctrl+o to expand)"
         super().__init__(label, **kwargs)
@@ -482,13 +586,11 @@ class ToolGroupSummary(Static, can_focus=True):
         self._expanded = not self._expanded
         self._refresh_display()
 
-
     def on_click(self) -> None:
         self.toggle()
 
 
 class SubAgentBlock(Static, can_focus=True):
-
     def __init__(self, agent_type: str, description: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._agent_type = agent_type or "agent"
@@ -515,6 +617,7 @@ class SubAgentBlock(Static, can_focus=True):
 
     def _parse_stats(self, output: str) -> None:
         import re
+
         m = re.search(r"(\d+)\s+tool", output[:200])
         if m:
             self._tool_count = int(m.group(1))
@@ -563,7 +666,6 @@ class GCodeApp(App):
         Binding("ctrl+o", "toggle_tool_blocks", "Toggle tools", priority=True),
     ]
 
-
     def __init__(
         self,
         providers: list[ProviderConfig],
@@ -576,9 +678,16 @@ class GCodeApp(App):
         teammate_mode: str = "",
         enable_coordinator_mode: bool = False,
         driver_class: type | None = None,
+        max_total_tokens: int = 1_000_000,
+        cu_config: Any = None,
     ) -> None:
         super().__init__(driver_class=driver_class)
         self.providers = providers
+        self._max_total_tokens = max_total_tokens
+        self._cu_config = cu_config
+        self._cu_bootstrap = None
+        self._cu_init_task: asyncio.Task | None = None
+        self._cu_failed = False
         self._initial_permission_mode = permission_mode
         self._mcp_server_configs = mcp_servers or []
         self.hook_engine = hook_engine
@@ -590,7 +699,9 @@ class GCodeApp(App):
         self.file_cache = FileCache()
         self.client: LLMClient | None = None
         self.conversation = ConversationManager()
-        self.registry: ToolRegistry = create_default_registry(file_cache=self.file_cache)
+        self.registry: ToolRegistry = create_default_registry(
+            file_cache=self.file_cache
+        )
         self.agent: Agent | None = None
         self.mcp_manager: MCPManager | None = None
         self._mcp_init_task: asyncio.Task[None] | None = None
@@ -616,7 +727,9 @@ class GCodeApp(App):
         self.skill_executor: SkillExecutor | None = None
         self._load_skill_tool: LoadSkill | None = None
         self.agent_loader: AgentLoader | None = None
-        self.task_manager: TaskManager = TaskManager()
+        self.task_manager: TaskManager = TaskManager(
+            store_path=str(Path.cwd() / ".gcode" / "runtime" / "runs.sqlite3"),
+        )
         self.trace_manager: TraceManager = TraceManager()
         self._notification_check_task: asyncio.Task[None] | None = None
         self.worktree_manager: WorktreeManager | None = None
@@ -680,8 +793,33 @@ class GCodeApp(App):
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if self._cu_init_task and not self._cu_init_task.done():
+            self._cu_init_task.cancel()
+            await asyncio.gather(self._cu_init_task, return_exceptions=True)
+        try:
+            if self._cu_bootstrap:
+                await self._cu_bootstrap.close()
+        finally:
+            if self.hook_engine:
+                await self.hook_engine.aclose()
         if self.session:
             self.session.close()
+
+    async def _init_cu(self) -> None:
+        from gcode.cu.bootstrap import CUBootstrap
+
+        try:
+            if self.agent is None or self._cu_bootstrap is not None:
+                raise RuntimeError("CU initialization unavailable")
+            self._cu_bootstrap = CUBootstrap(self._cu_config)
+            await self._cu_bootstrap.start(self.agent, self.registry)
+            self._show_system_message("Desktop tools ready.")
+        except asyncio.CancelledError:
+            self._cu_failed = True
+            raise
+        except Exception:
+            self._cu_failed = True
+            self._show_error("Desktop tools failed to start; requests are blocked.")
 
     def _select_provider(self, provider: ProviderConfig) -> None:
         self._selected_provider = provider
@@ -711,6 +849,7 @@ class GCodeApp(App):
         self.session = self.session_manager.create()
 
         from gcode.filehistory import FileHistory
+
         self.file_history = FileHistory(work_dir, self.session.session_id)
         for tool in self.registry.list_tools():
             if hasattr(tool, "file_history"):
@@ -726,6 +865,7 @@ class GCodeApp(App):
         self.registry.register(AskUserTool())
 
         from gcode.tools.exit_plan_mode import ExitPlanModeTool
+
         self._exit_plan_tool = ExitPlanModeTool()
         self.registry.register(self._exit_plan_tool)
 
@@ -739,9 +879,16 @@ class GCodeApp(App):
             instructions_content=self._instructions_content,
             memory_manager=self.memory_manager,
             hook_engine=self.hook_engine,
+            max_total_tokens=self._max_total_tokens,
         )
         self.agent.file_history = self.file_history
         self.agent.session_id = self.session.session_id
+        if self._cu_config is not None:
+            if self._cu_init_task is not None:
+                self._cu_failed = True
+            else:
+                self._cu_init_task = asyncio.create_task(self._init_cu())
+        self.task_manager.scope_id = self.session.session_id
 
         self._exit_plan_tool._is_plan_mode = lambda: self.agent.plan_mode
         self._exit_plan_tool._plan_exists = lambda: self.agent._get_plan_path().exists()
@@ -749,9 +896,7 @@ class GCodeApp(App):
         # Layer 2: 在后台异步拉取模型的 context window，不阻塞启动流程。
         # agent 已经有一个同步解析的窗口值（来自配置 / 映射表 / 默认值）；
         # 如果异步拉取成功，就原地升级为更准确的值。
-        self.run_worker(
-            self._resolve_context_window(provider), exclusive=False
-        )
+        self.run_worker(self._resolve_context_window(provider), exclusive=False)
 
         self.skill_loader = SkillLoader(work_dir)
         self.skill_loader.load_all()
@@ -785,6 +930,7 @@ class GCodeApp(App):
 
         # --- Worktree 系统初始化 ---
         from gcode.config import WorktreeConfig
+
         wt_cfg = self._worktree_config or WorktreeConfig()
         self.worktree_manager = WorktreeManager(
             repo_root=work_dir,
@@ -799,7 +945,10 @@ class GCodeApp(App):
 
         from gcode.tools.enter_worktree import EnterWorktreeTool
         from gcode.tools.exit_worktree import ExitWorktreeTool
-        self.registry.register(EnterWorktreeTool(worktree_manager=self.worktree_manager))
+
+        self.registry.register(
+            EnterWorktreeTool(worktree_manager=self.worktree_manager)
+        )
         self.registry.register(ExitWorktreeTool(worktree_manager=self.worktree_manager))
 
         self._stale_cleanup_task = asyncio.create_task(
@@ -821,7 +970,9 @@ class GCodeApp(App):
         from gcode.tools.team_create import TeamCreateTool
         from gcode.tools.team_delete import TeamDeleteTool
 
-        self.team_manager = TeamManager(worktree_manager=self.worktree_manager, trace_manager=self.trace_manager)
+        self.team_manager = TeamManager(
+            worktree_manager=self.worktree_manager, trace_manager=self.trace_manager
+        )
 
         agent_tool = AgentTool(
             agent_loader=self.agent_loader,
@@ -880,6 +1031,7 @@ class GCodeApp(App):
         self.command_registry.register_sync(tasks_cmd)
 
         from gcode.commands.handlers.trace import create_trace_command
+
         trace_cmd = create_trace_command(self.trace_manager, self.agent.agent_id)
         self.command_registry.register_sync(trace_cmd)
 
@@ -891,9 +1043,7 @@ class GCodeApp(App):
 
         if self.hook_engine:
             asyncio.ensure_future(
-                self.hook_engine.run_hooks(
-                    "startup", HookContext(event_name="startup")
-                )
+                self.hook_engine.run_hooks("startup", HookContext(event_name="startup"))
             )
 
         if self._mcp_server_configs:
@@ -971,7 +1121,6 @@ class GCodeApp(App):
     # 命令分发
     # -----------------------------------------------------------------
 
-
     def _build_command_context(self, args: str) -> CommandContext:
         return CommandContext(
             args=args,
@@ -994,6 +1143,7 @@ class GCodeApp(App):
 
     def _set_session(self, session: Session) -> None:
         self.session = session
+        self.task_manager.scope_id = session.session_id
         if self.agent:
             self.agent.session_id = session.session_id
 
@@ -1009,6 +1159,8 @@ class GCodeApp(App):
         record = make_compact_boundary(
             notification.boundary.summary,
             notification.boundary.keep,
+            preserved_constraints=notification.boundary.preserved_constraints,
+            notification_ids=notification.boundary.notification_ids,
         )
         self.session.append_record(record)
 
@@ -1145,7 +1297,10 @@ class GCodeApp(App):
             parent = summary.parent
             if parent:
                 for child in parent.children:
-                    if isinstance(child, ToolCallBlock) and child.tool_name in COLLAPSIBLE_TOOLS:
+                    if (
+                        isinstance(child, ToolCallBlock)
+                        and child.tool_name in COLLAPSIBLE_TOOLS
+                    ):
                         child.display = summary._expanded
 
         for block in self.query(SubAgentBlock):
@@ -1161,9 +1316,13 @@ class GCodeApp(App):
             return
         if self._agent_task and not self._agent_task.done():
             if self._subagent_task and not self._subagent_task.done():
-                task_id = self.task_manager.adopt_running(
-                    self._subagent_task, "background task"
-                ) if hasattr(self.task_manager, 'adopt_running') else None
+                task_id = (
+                    self.task_manager.adopt_running(
+                        self._subagent_task, "background task"
+                    )
+                    if hasattr(self.task_manager, "adopt_running")
+                    else None
+                )
                 if task_id:
                     self._show_system_message(
                         f"Task moved to background (id: {task_id})"
@@ -1188,7 +1347,7 @@ class GCodeApp(App):
         async def selector(system_prompt: str, user_message: str) -> str:
             from gcode.tools.base import StreamEnd, TextDelta
 
-            side_client = create_client(provider)
+            side_client = self.agent.budgeted_side_client(create_client(provider))
             mini_conv = ConversationManager()
             mini_conv.history = [Message(role="user", content=user_message)]
             collected = ""
@@ -1225,8 +1384,15 @@ class GCodeApp(App):
             if task is not None:
                 self._turn_tasks.discard(task)
 
-    async def _send_message_impl(self, text: str, is_notification: bool = False) -> None:
+    async def _send_message_impl(
+        self, text: str, is_notification: bool = False
+    ) -> None:
         assert self.agent is not None
+        if self._cu_init_task:
+            await asyncio.shield(self._cu_init_task)
+        if self._cu_failed:
+            self._show_error("Desktop tools failed to start; requests are blocked.")
+            return
         self.agent.prepare_conversation(self.conversation)
 
         if self._mcp_init_task and not self._mcp_init_task.done():
@@ -1241,14 +1407,17 @@ class GCodeApp(App):
             text = expand_at_refs(text, self.agent.work_dir)
 
         # Start memory recall prefetch before UI work.
-        prefetch_task = asyncio.create_task(
-            self._prefetch_relevant_memories(text)
-        ) if text else None
+        prefetch_task = (
+            asyncio.create_task(self._prefetch_relevant_memories(text))
+            if text
+            else None
+        )
 
         if text:
             user_row = Vertical(classes="user-row")
             await chat.mount(user_row)
             from rich.text import Text as RichText
+
             user_rich = RichText()
             user_rich.append("❯ ", style="bold color(80)")
             user_rich.append(text, style="bold color(255)")
@@ -1318,6 +1487,7 @@ class GCodeApp(App):
                         await ai_row.mount(streaming_label)
                     accumulated_text += event.text
                     from rich.text import Text as RichText
+
                     t = RichText()
                     t.append("● ", style="bold color(99)")
                     t.append(accumulated_text)
@@ -1332,7 +1502,10 @@ class GCodeApp(App):
                         if streaming_label is not None:
                             await streaming_label.remove()
                         from rich.text import Text as RichText
-                        prefix = Static(RichText("●  ", style="bold color(99)"), classes="message")
+
+                        prefix = Static(
+                            RichText("●  ", style="bold color(99)"), classes="message"
+                        )
                         await ai_row.mount(prefix)
                         md = Markdown(accumulated_text, classes="message ai-message")
                         await ai_row.mount(md)
@@ -1368,7 +1541,11 @@ class GCodeApp(App):
                     self.call_after_refresh(chat.scroll_end, animate=False)
 
                     ask_tool = self.registry.get("AskUserQuestion")
-                    if ask_tool and isinstance(ask_tool, AskUserTool) and ask_tool._pending_event:
+                    if (
+                        ask_tool
+                        and isinstance(ask_tool, AskUserTool)
+                        and ask_tool._pending_event
+                    ):
                         await self._handle_askuser(ask_tool._pending_event)
 
                 elif isinstance(event, TurnComplete):
@@ -1378,7 +1555,8 @@ class GCodeApp(App):
                         history_cursor = len(self.conversation.history)
 
                     collapsible = [
-                        (tid, blk) for tid, blk in tool_blocks.items()
+                        (tid, blk)
+                        for tid, blk in tool_blocks.items()
                         if isinstance(blk, ToolCallBlock)
                         and blk.tool_name in COLLAPSIBLE_TOOLS
                         and not blk._loading
@@ -1386,7 +1564,8 @@ class GCodeApp(App):
                     if len(collapsible) >= 2:
                         total_elapsed = sum(b._elapsed for _, b in collapsible)
                         summary = ToolGroupSummary(
-                            len(collapsible), total_elapsed,
+                            len(collapsible),
+                            total_elapsed,
                             classes="tool-block tool-group-summary",
                         )
                         for _, blk in collapsible:
@@ -1439,12 +1618,11 @@ class GCodeApp(App):
                             + self.agent.total_output_tokens
                         )
                         self.session.meta.save(
-                            self.session._sessions_dir / f"{self.session.session_id}.meta"
+                            self.session._sessions_dir
+                            / f"{self.session.session_id}.meta"
                         )
                     if self.agent.plan_mode:
-                        asyncio.ensure_future(
-                            self._show_plan_approval()
-                        )
+                        asyncio.ensure_future(self._show_plan_approval())
 
             # 收尾：渲染剩余的累积文本
             if accumulated_text and streaming_label is not None:
@@ -1510,7 +1688,7 @@ class GCodeApp(App):
                 f"{status_icon} 后台任务完成: [{task.id}] {task.name} — {task.status}"
             )
 
-            if hasattr(self, 'team_manager'):
+            if hasattr(self, "team_manager"):
                 self.team_manager.on_teammate_completed(task.agent.agent_id)
 
         self._agent_task = asyncio.create_task(
@@ -1529,11 +1707,13 @@ class GCodeApp(App):
             return
         if self._streaming or self.agent is None:
             return
-        notes = self.team_manager.drain_lead_mailbox()
+        notes = self.team_manager.drain_lead_mailbox(
+            persist=lambda note: self.agent.persist_notification(
+                self.conversation, note
+            )
+        )
         if not notes:
             return
-        for note in notes:
-            self.conversation.add_system_reminder(note)
         self._agent_task = asyncio.create_task(
             self._send_message("", is_notification=True)
         )
@@ -1680,7 +1860,9 @@ class GCodeApp(App):
             )
             if self._spinner_idx % 5 == 0:
                 try:
-                    self.query_one("#chat-area", VerticalScroll).scroll_end(animate=False)
+                    self.query_one("#chat-area", VerticalScroll).scroll_end(
+                        animate=False
+                    )
                 except Exception:
                     pass
 
@@ -1728,7 +1910,9 @@ class GCodeApp(App):
         try:
             label = self.query_one("#teammates-label", Static)
             if count > 0:
-                label.update(f"[cyan]● {count} teammate{'s' if count != 1 else ''}[/cyan]  ")
+                label.update(
+                    f"[cyan]● {count} teammate{'s' if count != 1 else ''}[/cyan]  "
+                )
             else:
                 label.update("")
         except Exception:
@@ -1818,15 +2002,14 @@ class GCodeApp(App):
         mcp_tools = tools_after - tools_before
         server_count = len(manager._clients)
         if server_count > 0:
-            self._mcp_server_info = (
-                f"Connected to {server_count} MCP server(s), {mcp_tools} tools registered"
-            )
+            self._mcp_server_info = f"Connected to {server_count} MCP server(s), {mcp_tools} tools registered"
         if server_count > 0 and mcp_tools > 0:
             parts = []
             for cfg in self._mcp_server_configs:
-                srv_name = cfg.name if hasattr(cfg, 'name') else str(cfg)
+                srv_name = cfg.name if hasattr(cfg, "name") else str(cfg)
                 tool_names = [
-                    t.name for t in self.registry.list_tools()
+                    t.name
+                    for t in self.registry.list_tools()
                     if t.name.startswith(f"mcp__{srv_name}__")
                 ]
                 section = f"## {srv_name}\n"
@@ -1836,8 +2019,7 @@ class GCodeApp(App):
             self._mcp_instructions = (
                 "# MCP Server Instructions\n\n"
                 "The following MCP servers are connected. "
-                "Use their tools when the user asks.\n\n"
-                + "\n\n".join(parts)
+                "Use their tools when the user asks.\n\n" + "\n\n".join(parts)
             )
 
     async def _shutdown_mcp(self) -> None:
@@ -1879,15 +2061,17 @@ class GCodeApp(App):
             tasks: list[asyncio.Task] = []
 
             if self.agent and self.agent.memory_manager:
-                tasks.append(asyncio.create_task(
-                    self.agent._extract_memories(self.conversation)
-                ))
+                tasks.append(
+                    asyncio.create_task(self.agent._extract_memories(self.conversation))
+                )
             if self.hook_engine:
-                tasks.append(asyncio.create_task(
-                    self.hook_engine.run_hooks(
-                        "shutdown", HookContext(event_name="shutdown")
+                tasks.append(
+                    asyncio.create_task(
+                        self.hook_engine.run_hooks(
+                            "shutdown", HookContext(event_name="shutdown")
+                        )
                     )
-                ))
+                )
             tasks.append(asyncio.create_task(self._shutdown_mcp()))
 
             if tasks:
@@ -1899,7 +2083,7 @@ class GCodeApp(App):
             if self._stale_cleanup_task and not self._stale_cleanup_task.done():
                 self._stale_cleanup_task.cancel()
 
-            if hasattr(self, 'team_manager'):
+            if hasattr(self, "team_manager"):
                 for name in list(self.team_manager._teams):
                     try:
                         team = self.team_manager._teams[name]
@@ -1954,7 +2138,9 @@ class GCodeApp(App):
                 label.update(f"[{color}]{display}[/{color}]  (shift+tab to cycle)")
         try:
             model_label = self.query_one("#model-label", Static)
-            model_text = self._selected_provider.model if self._selected_provider else ""
+            model_text = (
+                self._selected_provider.model if self._selected_provider else ""
+            )
             if self._mcp_connecting:
                 model_label.update(f"[yellow]MCP connecting…[/yellow]  {model_text}")
             else:

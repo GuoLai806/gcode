@@ -1,0 +1,187 @@
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:300: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+..........................................FF.F.F...........FF....        [100%]
+=================================== FAILURES ===================================
+_________ TestAutoCompactKeepRecent.test_recent_messages_kept_verbatim _________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x1078b6ed0>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_recent_messages_kept_verb0')
+
+    async def test_recent_messages_kept_verbatim(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        # 快照记录保留窗口选中了哪些尾部消息，让断言跟随算法本身，
+        # 而不是依赖写死的数量。
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        assert kept_before, "fixture should keep a non-empty tail"
+    
+        client = _SummaryClient()
+        # 钉一个很高的锚点，使自动压缩阈值被触发。
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # 已完成压缩。
+        from gcode.context.manager import CompactEvent
+    
+>       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', <class 'gcode.context.manager.CompactEvent'>)
+
+tests/test_context.py:633: AssertionError
+__________ TestAutoCompactKeepRecent.test_summary_only_covers_prefix ___________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x1078dd310>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_summary_only_covers_prefi0')
+
+    async def test_summary_only_covers_prefix(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_contents = {m.content for m in conv.history[keep_start:]}
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # 喂给摘要器的历史绝不能包含任何被保留的尾部消息
+        # （摘要只覆盖 messages[:keep_start]）。
+>       assert client.summarized_history is not None
+E       assert None is not None
+E        +  where None = <test_context._SummaryClient object at 0x10a8d7b90>.summarized_history
+
+tests/test_context.py:659: AssertionError
+__________ TestAutoCompactKeepRecent.test_anchor_reset_after_compact ___________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x1078dd9a0>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_anchor_reset_after_compac0')
+
+    async def test_anchor_reset_after_compact(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        conv.record_usage_anchor(input_tokens=200_000)
+        assert conv.baseline_tokens > 0 and conv.anchor_count > 0
+        client = _SummaryClient()
+    
+        await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        # replace_history 必须已经把过期的锚点清零。
+>       assert conv.baseline_tokens == 0
+E       AssertionError: assert 200000 == 0
+E        +  where 200000 = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22).baseline_tokens
+
+tests/test_context.py:712: AssertionError
+____ TestAutoCompactKeepRecent.test_event_carries_boundary_summary_and_keep ____
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x107929f10>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_event_carries_boundary_su0')
+
+    async def test_event_carries_boundary_summary_and_keep(
+        self, tmp_path: Path
+    ) -> None:
+        # 返回的 CompactEvent 必须把一个结构化的 boundary（摘要 + 精确逐字
+        # 保留的尾部）交给会话层，使其能持久化一条 compact_boundary 记录。
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+        result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+    
+        from gcode.context.manager import CompactEvent
+    
+>       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', <class 'gcode.context.manager.CompactEvent'>)
+
+tests/test_context.py:758: AssertionError
+____ test_literal_constraint_survives_three_compactions_and_disk_roundtrip _____
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_literal_constraint_surviv0')
+
+    @pytest.mark.asyncio
+    async def test_literal_constraint_survives_three_compactions_and_disk_roundtrip(
+        tmp_path,
+    ):
+        from gcode.memory.session import make_compact_boundary, records_to_messages
+    
+        conv = long_conversation()
+        literal = "不要删除原始数据；只允许创建新版本。"
+        conv.history.insert(0, Message("user", literal, origin="user"))
+        for _ in range(3):
+            result = await auto_compact(
+                conv,
+                SummaryClient("<summary>All good.</summary>", "end_turn"),
+                50000,
+                tmp_path,
+                manual=True,
+            )
+>           assert isinstance(result, CompactEvent)
+E           AssertionError: assert False
+E            +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)
+
+tests/test_checkpoint_integrity.py:78: AssertionError
+_________ test_compact_retains_artifact_and_commits_before_projection __________
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-281/test_compact_retains_artifact_0')
+
+    @pytest.mark.asyncio
+    async def test_compact_retains_artifact_and_commits_before_projection(tmp_path):
+        conv = long_conversation()
+        artifact = tmp_path / "call.txt"
+        artifact.write_text("original evidence")
+        conv.history.extend(
+            [
+                Message("assistant", "", tool_uses=[ToolUseBlock("call", "ReadFile", {})]),
+                Message(
+                    "user",
+                    "",
+                    tool_results=[
+                        ToolResultBlock(
+                            "call", f"<persisted-output>{artifact}</persisted-output>"
+                        )
+                    ],
+                ),
+            ]
+        )
+        result = await auto_compact(
+            conv,
+            SummaryClient("<summary>constraints retained</summary>", "end_turn"),
+            50000,
+            tmp_path,
+            manual=True,
+        )
+>       assert isinstance(result, CompactEvent)
+E       AssertionError: assert False
+E        +  where False = isinstance('不能安全压缩用户约束: user constraints exceed 30000 characters; preserve original history', CompactEvent)
+
+tests/test_checkpoint_integrity.py:122: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_recent_messages_kept_verbatim
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_summary_only_covers_prefix
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_anchor_reset_after_compact
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_event_carries_boundary_summary_and_keep
+FAILED tests/test_checkpoint_integrity.py::test_literal_constraint_survives_three_compactions_and_disk_roundtrip
+FAILED tests/test_checkpoint_integrity.py::test_compact_retains_artifact_and_commits_before_projection
+6 failed, 59 passed in 1.07s

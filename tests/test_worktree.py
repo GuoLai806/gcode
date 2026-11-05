@@ -1,8 +1,11 @@
 """Git Worktree 管理系统的测试（第 13 章）。"""
+
 from __future__ import annotations
 
 import asyncio
 import json
+import multiprocessing
+import time
 import os
 import subprocess
 import tempfile
@@ -22,6 +25,7 @@ from gcode.worktree.slug import flatten_slug, validate_slug
 # =========================================================================
 # A. Slug 校验
 # =========================================================================
+
 
 class TestValidateSlug:
     def test_valid_simple(self):
@@ -68,6 +72,7 @@ class TestValidateSlug:
     def test_empty_segment(self):
         assert validate_slug("foo//bar") is not None
 
+
 class TestFlattenSlug:
     def test_no_slash(self):
         assert flatten_slug("my-feature") == "my-feature"
@@ -78,9 +83,11 @@ class TestFlattenSlug:
     def test_multiple_slashes(self):
         assert flatten_slug("a/b/c") == "a+b+c"
 
+
 # =========================================================================
 # B. FileCache
 # =========================================================================
+
 
 class TestFileCache:
     def test_put_and_get(self):
@@ -111,9 +118,11 @@ class TestFileCache:
         cache = FileCache()
         cache.invalidate("/nonexistent")  # 不应抛出异常
 
+
 # =========================================================================
 # C. 配置扩展
 # =========================================================================
+
 
 class TestWorktreeConfig:
     def test_defaults(self):
@@ -153,12 +162,13 @@ class TestWorktreeConfig:
         assert cfg.worktree.stale_cleanup_interval == 1800
         assert cfg.worktree.stale_cutoff_hours == 12
 
+
 # =========================================================================
 # H. 会话持久化
 # =========================================================================
 
-class TestSessionPersistence:
 
+class TestSessionPersistence:
     def test_save_and_load(self, tmp_path):
         session = WorktreeSession(
             original_cwd="/original",
@@ -194,9 +204,11 @@ class TestSessionPersistence:
         path.write_text("not json")
         assert load_worktree_session(tmp_path) is None
 
+
 # =========================================================================
 # 集成辅助函数
 # =========================================================================
+
 
 class TestIntegrationHelpers:
     def test_generate_worktree_name(self):
@@ -210,17 +222,32 @@ class TestIntegrationHelpers:
         assert "/wt/dir" in notice
         assert "WORKTREE CONTEXT" in notice
 
+
 # =========================================================================
 # D. WorktreeManager（需要真实的 git 仓库）
 # =========================================================================
 
+
 def _init_git_repo(path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=str(path), capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(path), capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(path), capture_output=True)
+    subprocess.run(["git", "init"], cwd=str(path), capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=str(path),
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=str(path),
+        capture_output=True,
+        check=True,
+    )
     (path / "README.md").write_text("# Test")
-    subprocess.run(["git", "add", "."], cwd=str(path), capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=str(path), capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=str(path), capture_output=True, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=str(path), capture_output=True, check=True
+    )
+
 
 @pytest.fixture
 def git_repo(tmp_path):
@@ -229,20 +256,29 @@ def git_repo(tmp_path):
     _init_git_repo(repo)
     return repo
 
+
 @pytest.fixture
 def manager(git_repo):
-    cache = FileCache()
-    return WorktreeManager(
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield WorktreeManager(
         repo_root=str(git_repo),
-        file_cache=cache,
+        worktree_dir=str(git_repo.parent / "worktrees"),
         symlink_directories=[],
     )
+    loop.close()
+    asyncio.set_event_loop(None)
+
+
+def _create_finished_worktree(repo: str, worktree_dir: str) -> None:
+    manager = WorktreeManager(repo, worktree_dir=worktree_dir, owner_lease_seconds=0.05)
+    asyncio.run(manager.create("planned"))
+    manager.seal_process_registry("planned")
+
 
 class TestWorktreeManager:
     def test_create(self, manager, git_repo):
-        wt = asyncio.get_event_loop().run_until_complete(
-            manager.create("test-feature")
-        )
+        wt = asyncio.get_event_loop().run_until_complete(manager.create("test-feature"))
         assert wt.name == "test-feature"
         assert wt.branch == "worktree-test-feature"
         assert Path(wt.path).exists()
@@ -250,9 +286,7 @@ class TestWorktreeManager:
 
     def test_create_invalid_slug(self, manager):
         with pytest.raises(WorktreeError, match="must not contain"):
-            asyncio.get_event_loop().run_until_complete(
-                manager.create("../escape")
-            )
+            asyncio.get_event_loop().run_until_complete(manager.create("../escape"))
 
     def test_create_duplicate(self, manager):
         loop = asyncio.get_event_loop()
@@ -261,9 +295,7 @@ class TestWorktreeManager:
             loop.run_until_complete(manager.create("dup"))
 
     def test_create_nested_slug(self, manager):
-        wt = asyncio.get_event_loop().run_until_complete(
-            manager.create("team/alice")
-        )
+        wt = asyncio.get_event_loop().run_until_complete(manager.create("team/alice"))
         assert wt.branch == "worktree-team+alice"
         assert Path(wt.path).exists()
 
@@ -272,9 +304,12 @@ class TestWorktreeManager:
         wt1 = loop.run_until_complete(manager.create("recover"))
         path = wt1.path
         manager.active.clear()
-        wt2 = loop.run_until_complete(manager.create("recover"))
+        assert manager.reconcile()["recover"] == "verified"
+        wt2 = manager.active["recover"]
         assert wt2.path == path
         assert wt2.head_commit == wt1.head_commit
+        with pytest.raises(WorktreeError, match="already exists"):
+            loop.run_until_complete(manager.create("recover"))
 
     def test_enter_and_session(self, manager):
         loop = asyncio.get_event_loop()
@@ -283,12 +318,13 @@ class TestWorktreeManager:
         assert session.worktree_name == "enter-test"
         assert manager.current_session is not None
 
-    def test_enter_clears_cache(self, manager):
+    def test_enter_does_not_change_global_cwd(self, manager):
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.create("cache-test"))
-        manager.file_cache.put("/some/file", "old content")
-        loop.run_until_complete(manager.enter("cache-test"))
-        assert manager.file_cache.get("/some/file") is None
+        wt = loop.run_until_complete(manager.create("cache-test"))
+        original = os.getcwd()
+        session = loop.run_until_complete(manager.enter("cache-test"))
+        assert os.getcwd() == original
+        assert session.worktree_path == wt.path
 
     def test_exit_keep(self, manager):
         loop = asyncio.get_event_loop()
@@ -302,10 +338,46 @@ class TestWorktreeManager:
         loop = asyncio.get_event_loop()
         wt = loop.run_until_complete(manager.create("exit-rm"))
         loop.run_until_complete(manager.enter("exit-rm"))
-        loop.run_until_complete(
-            manager.exit("exit-rm", action="remove", discard_changes=True)
+        with pytest.raises(WorktreeError, match="reviewed cleanup plan"):
+            loop.run_until_complete(
+                manager.exit("exit-rm", action="remove", discard_changes=True)
+            )
+        assert "exit-rm" in manager.active
+        assert Path(wt.path).exists()
+        assert manager.current_session is not None
+
+    def test_cleanup_plan_rechecks_changes_and_preserves_branch(
+        self, manager, git_repo
+    ):
+        process = multiprocessing.Process(
+            target=_create_finished_worktree, args=(str(git_repo), manager.worktree_dir)
         )
-        assert "exit-rm" not in manager.active
+        process.start()
+        process.join(20)
+        assert process.exitcode == 0
+        time.sleep(0.1)
+        assert manager.reconcile()["planned"] == "verified"
+        manager.mark_inactive("planned")
+        plan = manager.plan_cleanup("planned")
+        path = Path(manager.active["planned"].path)
+        branch = manager.active["planned"].branch
+        (path / "new.txt").write_text("preserve")
+        with pytest.raises(WorktreeError, match="preconditions changed"):
+            asyncio.get_event_loop().run_until_complete(
+                manager.apply_cleanup(plan["id"])
+            )
+        assert (path / "new.txt").read_text() == "preserve"
+        (path / "new.txt").unlink()
+        asyncio.get_event_loop().run_until_complete(manager.apply_cleanup(plan["id"]))
+        assert not path.exists()
+        assert (
+            subprocess.run(
+                ["git", "rev-parse", "--verify", branch],
+                cwd=git_repo,
+                capture_output=True,
+            ).returncode
+            == 0
+        )
 
     def test_exit_remove_with_changes_blocked(self, manager, git_repo):
         loop = asyncio.get_event_loop()
@@ -327,13 +399,13 @@ class TestWorktreeManager:
 
     def test_enter_nonexistent(self, manager):
         with pytest.raises(WorktreeError, match="not found"):
-            asyncio.get_event_loop().run_until_complete(
-                manager.enter("nope")
-            )
+            asyncio.get_event_loop().run_until_complete(manager.enter("nope"))
+
 
 # =========================================================================
 # F. 变更检测与自动清理
 # =========================================================================
+
 
 class TestChangeDetection:
     def test_clean_worktree(self, manager):
@@ -352,24 +424,38 @@ class TestChangeDetection:
         wt = loop.run_until_complete(manager.create("commit-wt"))
         assert wt.head_commit, "head_commit should not be empty after create"
         (Path(wt.path) / "committed.txt").write_text("new")
-        subprocess.run(["git", "add", "."], cwd=wt.path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "add", "."], cwd=wt.path, capture_output=True, check=True
+        )
         result = subprocess.run(
-            ["git", "-c", "user.name=Test", "-c", "user.email=t@t",
-             "commit", "-m", "test"],
-            cwd=wt.path, capture_output=True, text=True,
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-m",
+                "test",
+            ],
+            cwd=wt.path,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"commit failed: {result.stderr}"
         changes = count_worktree_changes(wt.path, wt.head_commit)
         assert changes.new_commits > 0
 
-    def test_auto_cleanup_removes_clean(self, manager):
+    def test_auto_cleanup_preserves_clean(self, manager):
         loop = asyncio.get_event_loop()
         wt = loop.run_until_complete(manager.create("auto-clean"))
         result = loop.run_until_complete(
             manager.auto_cleanup("auto-clean", wt.head_commit)
         )
-        assert not result.kept
-        assert "auto-clean" not in manager.active
+        assert result.kept
+        assert result.path == wt.path
+        assert "auto-clean" in manager.active
+        assert Path(wt.path).exists()
 
     def test_auto_cleanup_keeps_dirty(self, manager):
         loop = asyncio.get_event_loop()
@@ -382,9 +468,11 @@ class TestChangeDetection:
         assert result.path == wt.path
         assert "auto-dirty" in manager.active
 
+
 # =========================================================================
 # D4. read_worktree_head_sha
 # =========================================================================
+
 
 class TestReadWorktreeHeadSha:
     def test_valid_worktree(self, manager):

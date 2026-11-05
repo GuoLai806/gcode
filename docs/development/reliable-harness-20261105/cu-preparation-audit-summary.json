@@ -1,0 +1,14 @@
+{
+  "evidence": "Supplementary read-only verification of earlier one-time launch reconciliation",
+  "recorded_operation_exit": 0,
+  "action_count": 1,
+  "retained_original_unknown": true,
+  "previous_audit_response_hash_matches": true,
+  "original_response_matches_ledger": true,
+  "original_evidence_hash_matches": true,
+  "fresh_evidence_hash_matches": true,
+  "native_receipt_sha256": "34b60e2a23c4c9414ccf77ee883cd9df8cfb033cd18dc764dd31cab8e7ae5c33",
+  "recorded_classification": "delivered_unverified",
+  "verification_state": "unknown",
+  "changes_to_ledger": false
+}

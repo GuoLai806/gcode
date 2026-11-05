@@ -47,11 +47,15 @@ async def handle_session(ctx: CommandContext) -> None:
             if not metas:
                 ctx.ui.add_system_message("没有已保存的会话。")
                 return
-            lines: list[str] = ["可恢复的会话（使用 /session resume <id> 或 /session resume <序号>）："]
+            lines: list[str] = [
+                "可恢复的会话（使用 /session resume <id> 或 /session resume <序号>）："
+            ]
             for i, m in enumerate(metas[:15], 1):
                 ts = m.last_active.strftime("%Y-%m-%d %H:%M")
                 title = m.title or "(未命名)"
-                lines.append(f"  {i}. [{m.id[:8]}]  {title}  ({m.message_count} msgs, {ts})")
+                lines.append(
+                    f"  {i}. [{m.id[:8]}]  {title}  ({m.message_count} msgs, {ts})"
+                )
             ctx.ui.add_system_message("\n".join(lines))
             ctx.config["_resume_candidates"] = [m.id for m in metas[:15]]
             return
@@ -72,12 +76,14 @@ async def handle_session(ctx: CommandContext) -> None:
             conv.history.append(msg)
         ctx.config["set_conversation"](conv)
         if ctx.agent:
+            ctx.agent.recovery_writes_stopped = result.recovery_writes_stopped
+            ctx.agent._pending_calls = dict(result.pending_calls)
+            ctx.agent._unknown_call_ids = set(result.unknown_call_ids)
             ctx.agent._loop_count = 0
         await ctx.config["render_restored"](result.messages)
         ctx.ui.add_system_message(
             f"会话已恢复: {session_id} ({result.session.meta.message_count} msgs)"
         )
-
 
     elif sub == "new":
         if ctx.session:
@@ -86,6 +92,9 @@ async def handle_session(ctx: CommandContext) -> None:
         ctx.config["set_session"](new_session)
         ctx.config["set_conversation"](ConversationManager())
         if ctx.agent:
+            ctx.agent.recovery_writes_stopped = False
+            ctx.agent._pending_calls = {}
+            ctx.agent._unknown_call_ids = set()
             ctx.agent._loop_count = 0
         ctx.config["clear_chat"]()
         ctx.ui.add_system_message(f"新会话已创建: {new_session.session_id}")
@@ -103,7 +112,6 @@ async def handle_session(ctx: CommandContext) -> None:
         else:
             ctx.ui.add_system_message(f"会话未找到: {session_id}")
 
-
     else:
         ctx.ui.add_system_message(
             "用法: /session [list | resume <id> | new | delete <id>]"
@@ -117,4 +125,3 @@ SESSION_COMMAND = Command(
     type=CommandType.LOCAL,
     handler=handle_session,
 )
-

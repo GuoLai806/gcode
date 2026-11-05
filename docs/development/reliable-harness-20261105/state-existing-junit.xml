@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="18" failures="9" skipped="0" tests="101" time="1.440" timestamp="2026-11-05T23:38:33.942618+08:00" hostname="MacBook-Pro.local"><testcase classname="tests.test_teams.TestModels" name="test_teammate_info_roundtrip" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_agent_team_save_load" time="0.001" /><testcase classname="tests.test_teams.TestModels" name="test_get_member" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_remove_member" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_set_member_active" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_all_idle" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_unique_team_name" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestModels object at 0x107bd6c60&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmpm9ohxjj8'
+
+    def test_unique_team_name(self, tmp_dir):
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_create_and_get" time="0.005" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_auto_increment_id" time="0.004" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_list_with_filters" time="0.006" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_update_with_dependencies" time="0.005" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_update_nonexistent_returns_none" time="0.003" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_persistence" time="0.004" /><testcase classname="tests.test_teams.TestMailbox" name="test_write_and_consume" time="0.005" /><testcase classname="tests.test_teams.TestMailbox" name="test_read_without_consume" time="0.004" /><testcase classname="tests.test_teams.TestMailbox" name="test_broadcast" time="0.005" /><testcase classname="tests.test_teams.TestMailbox" name="test_cleanup" time="0.003" /><testcase classname="tests.test_teams.TestMailbox" name="test_empty_mailbox" time="0.003" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_register_and_resolve" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_unregister" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_list_all" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_singleton" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_in_process_mode" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_non_interactive" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_tmux_session" time="0.000"><failure message="AssertionError: assert &lt;BackendType.... 'in-process'&gt; == &lt;BackendType.TMUX: 'tmux'&gt;&#10;  &#10;  - tmux&#10;  + in-process">self = &lt;test_teams.TestBackendDetect object at 0x107bd7290&gt;
+
+    def test_tmux_session(self):
+        with patch.dict(os.environ, {"TMUX": "/tmp/tmux-1234/default,12345,0"}):
+            result = detect_backend()
+&gt;           assert result == BackendType.TMUX
+E           AssertionError: assert &lt;BackendType.... 'in-process'&gt; == &lt;BackendType.TMUX: 'tmux'&gt;
+E             
+E             - tmux
+E             + in-process
+
+tests/test_teams.py:352: AssertionError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_iterm2_with_it2" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x107bd6f90&gt;
+
+    def test_iterm2_with_it2(self):
+        env = {"TERM_PROGRAM": "iTerm.app"}
+        with patch.dict(os.environ, env, clear=False):
+&gt;           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:357: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_tmux_installed_not_in_session" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x107bd5910&gt;
+
+    def test_tmux_installed_not_in_session(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+&gt;           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:374: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_no_backend_raises" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x107bd6240&gt;
+
+    def test_no_backend_raises(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+&gt;           with patch("GCode.teams.backend_detect.shutil.which", return_value=None):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:383: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestToolFilter" name="test_teammate_coordination_tools_in_allowed" time="0.000" /><testcase classname="tests.test_teams.TestToolFilter" name="test_coordinator_mode_tools" time="0.000" /><testcase classname="tests.test_teams.TestToolFilter" name="test_apply_coordinator_filter" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_disabled_by_default" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_enabled_with_flag_and_env" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_flag_without_env" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_env_without_flag" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_contains_phases" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_anti_pattern" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_continue_vs_spawn" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_task_notification" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_no_switch" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_switch_to_coordinator" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_none" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_coordinator_user_context" time="0.000" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_teammate_mode_defaults" time="0.000" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_load_config_with_team_fields" time="0.001" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_invalid_teammate_mode" time="0.000" /><testcase classname="tests.test_teams.TestTranscript" name="test_save_and_load" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestTranscript object at 0x107c08b00&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmptx4_alh7'
+
+    def test_save_and_load(self, tmp_dir):
+        from gcode.conversation import ConversationManager
+        from gcode.teams.transcript import load_transcript, save_transcript
+    
+        conv = ConversationManager()
+        conv.add_user_message("Hello agent")
+        conv.add_assistant_message("Hello user")
+    
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:538: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestTranscript" name="test_load_nonexistent" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestTranscript object at 0x107c083e0&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmpunvp1p1z'
+
+    def test_load_nonexistent(self, tmp_dir):
+        from gcode.teams.transcript import load_transcript
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:550: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1017300e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_normal_prompt" time="0.000"><failure message="ImportError: cannot import name 'BASE_PERSONA' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)">self = &lt;test_teams.TestAgentCoordinatorIntegration object at 0x107c087a0&gt;
+
+    def test_normal_prompt(self):
+&gt;       from gcode.prompts import build_system_prompt, BASE_PERSONA
+E       ImportError: cannot import name 'BASE_PERSONA' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)
+
+tests/test_teams.py:560: ImportError</failure></testcase><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_coordinator_prompt" time="0.000" /><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_coordinator_overrides_plan" time="0.000"><failure message="ImportError: cannot import name 'PLAN_MODE_INSTRUCTIONS' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)">self = &lt;test_teams.TestAgentCoordinatorIntegration object at 0x107c0a1e0&gt;
+
+    def test_coordinator_overrides_plan(self):
+&gt;       from gcode.prompts import build_system_prompt, PLAN_MODE_INSTRUCTIONS
+E       ImportError: cannot import name 'PLAN_MODE_INSTRUCTIONS' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)
+
+tests/test_teams.py:572: ImportError</failure></testcase><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_simple" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_with_dots" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_nested" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_single_char" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_underscores" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_empty" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_too_long" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_path_traversal" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_dot_segment" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_dot_only" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_spaces" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_special_chars" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_empty_segment" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_no_slash" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_with_slash" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_multiple_slashes" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_put_and_get" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_miss" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_invalidate" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_clear" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_invalidate_nonexistent" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_defaults" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_load_config_without_worktree_section" time="0.001" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_load_config_with_worktree_section" time="0.001" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_save_and_load" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_save_none_clears" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_load_missing_file" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_load_corrupt_json" time="0.000" /><testcase classname="tests.test_worktree.TestIntegrationHelpers" name="test_generate_worktree_name" time="0.000" /><testcase classname="tests.test_worktree.TestIntegrationHelpers" name="test_build_worktree_notice" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create" time="0.060"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_create0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_invalid_slug" time="0.062"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_create_invalid_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_duplicate" time="0.064"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_create_duplicate0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_nested_slug" time="0.060"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_create_nested_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_fast_recovery" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_fast_recovery0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_and_session" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_enter_and_session0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_clears_cache" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_enter_clears_cache0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_keep" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_exit_keep0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_remove_clean" time="0.063"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_exit_remove_clean0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_remove_with_changes_blocked" time="0.062"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_exit_remove_with_changes_0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_list_worktrees" time="0.064"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_list_worktrees0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_nonexistent" time="0.064"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_enter_nonexistent0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_clean_worktree" time="0.066"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_clean_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_uncommitted_changes" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_uncommitted_changes0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_new_commits" time="0.065"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_new_commits0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_auto_cleanup_removes_clean" time="0.064"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_auto_cleanup_removes_clea0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_auto_cleanup_keeps_dirty" time="0.061"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_auto_cleanup_keeps_dirty0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_valid_worktree" time="0.061"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-100/test_valid_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_nonexistent_dir" time="0.000" /><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_not_a_worktree" time="0.000" /></testsuite></testsuites>

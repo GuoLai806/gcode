@@ -1,0 +1,11 @@
+{
+  "kind": "independent saved-checkpoint audit after real-model compaction",
+  "checkpoint_sha256": "3cbae406d6f8803432e0744c33cb60ea84c4bb3767b8043a555889efe07c0e90",
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "result_marker_in_saved_summary": true,
+  "todo_marker_in_saved_summary": true,
+  "literal_in_saved_summary": true,
+  "full_source_history_count": 14,
+  "source_result_preserved": true,
+  "probe_correction": "Prior diagnostic looked only at history[0], which manual_compact populates with environment. It is not a summary-quality check."
+}

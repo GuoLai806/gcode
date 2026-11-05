@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -9,12 +10,14 @@ from gcode.tools.base import Tool, ToolResult
 
 if TYPE_CHECKING:
     from gcode.agent import Agent
+    from gcode.agents.parser import AgentDef
     from gcode.agents.loader import AgentLoader
     from gcode.agents.task_manager import TaskManager
     from gcode.agents.trace import TraceManager
     from gcode.client import LLMClient
 
 log = logging.getLogger(__name__)
+_spawn_reservation: ContextVar = ContextVar("agent_spawn_reservation", default=None)
 
 
 class AgentToolParams(BaseModel):
@@ -69,7 +72,6 @@ class AgentTool(Tool):
     category = "command"
     is_concurrency_safe = False
 
-
     def __init__(
         self,
         agent_loader: AgentLoader,
@@ -90,18 +92,210 @@ class AgentTool(Tool):
         self._worktree_manager = worktree_manager
         self._team_manager = team_manager
 
+    @staticmethod
+    def _bounded_child_registry(allowed_names):
+        from gcode.tools import ToolRegistry
+
+        class ChildRegistry(ToolRegistry):
+            def register(self, tool):
+                if tool.name not in allowed_names:
+                    raise PermissionError(
+                        "child cannot add a tool outside its inherited capabilities"
+                    )
+                previous = self.get(tool.name)
+                if previous is not None and previous is not tool:
+                    raise PermissionError("child cannot replace an inherited tool")
+                super().register(tool)
+
+        return ChildRegistry()
+
+    def _configure_child(self, child: Agent, approved_worktree: bool = False) -> None:
+        import copy
+        from gcode.permissions import PathSandbox, PermissionChecker
+        from gcode.permissions.rules import ScopedRuleView
+
+        parent = self._parent_agent
+        ceilings = list(getattr(parent, "permission_ceilings", [])) + (
+            [parent.permission_checker] if parent.permission_checker else []
+        )
+        if approved_worktree:
+            rebased = []
+            for checker in ceilings:
+                if isinstance(checker, PermissionChecker):
+                    checker = copy.copy(checker)
+                    # Rebase filesystem scope only. Mode, rules and detector stay inherited.
+                    checker.sandbox = PathSandbox(child.work_dir)
+                    checker.rule_engine = ScopedRuleView(
+                        checker.rule_engine, child.work_dir, parent.work_dir
+                    )
+                rebased.append(checker)
+            ceilings = rebased
+        child.permission_ceilings = ceilings
+        child.token_budget = getattr(parent, "token_budget", None)
+        child._spawn_budget = self._current_budget()
+        child._spawn_depth = getattr(parent, "_spawn_depth", 0) + 1
+        # Clone mutable per-agent tool state and prevent parent-session worktree tools.
+        from gcode.cache import FileCache
+        from gcode.filehistory import FileHistory
+        from gcode.tools.file_state_cache import FileStateCache
+
+        allowed_names = {
+            item.name
+            for item in child.registry.list_tools()
+            if item.name not in ("EnterWorktree", "ExitWorktree")
+        }
+        registry = self._bounded_child_registry(allowed_names)
+        state_cache, file_cache = FileStateCache(), FileCache()
+        history = FileHistory(child.work_dir, child.agent_id)
+        cloned = []
+        for tool in child.registry.list_tools():
+            if tool.name in ("EnterWorktree", "ExitWorktree"):
+                continue
+            if (
+                approved_worktree
+                and tool.name.startswith("mcp_")
+                and not getattr(tool, "scope_independent", False)
+            ):
+                # Opaque server cwd cannot be rebased into the child's worktree.
+                continue
+            local = copy.copy(tool)
+            if hasattr(local, "_state_cache") and local._state_cache is not None:
+                local._state_cache = state_cache
+            if hasattr(local, "_cache") and local._cache is not None:
+                local._cache = file_cache
+            if hasattr(local, "file_history"):
+                local.file_history = history
+            if hasattr(local, "_agent") and (
+                local._agent is parent or local.name == "LoadSkill"
+            ):
+                local._agent = child
+            if hasattr(local, "_parent_agent") and local._parent_agent is parent:
+                local._parent_agent = child
+            registry.register(local)
+            if parent.registry.is_discovered(tool.name):
+                registry.mark_discovered(tool.name)
+            cloned.append(local)
+        for local in cloned:
+            if hasattr(local, "_registry") and local._registry is child.registry:
+                local._registry = registry
+            # ToolSearch can point at the parent registry rather than the filtered one.
+            elif local.name == "ToolSearch" and hasattr(local, "_registry"):
+                local._registry = registry
+        child.registry = registry
+        child.file_history = history
+        if parent.hook_engine is not None:
+            from gcode.hooks.engine import HookEngine
+
+            hooks = copy.deepcopy(parent.hook_engine.hooks)
+            for hook in hooks:
+                hook.executed = False
+            child.hook_engine = HookEngine(hooks)
+
+    def _enabled_parent_registry(self):
+        from gcode.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        parent_registry = self._parent_agent.registry
+        for tool in parent_registry.list_tools():
+            if parent_registry.is_enabled(tool.name):
+                registry.register(tool)
+        return registry
+
+    def _current_budget(self):
+        from gcode.runtime.spawn import SpawnBudget
+
+        budget = getattr(self._parent_agent, "_spawn_budget", None)
+        manager = self._task_manager
+        if isinstance(budget, SpawnBudget) and (
+            getattr(self._parent_agent, "_spawn_depth", 0) > 0
+            or budget.scope == manager.scope_id
+        ):
+            return budget
+        budget = SpawnBudget(
+            manager.scope_id,
+            manager._store,
+            manager._max_spawns,
+            manager._max_concurrent,
+            manager._max_depth,
+        )
+        self._parent_agent._spawn_budget = budget
+        self._parent_agent._spawn_depth = 0
+        return budget
+
+    def _defer_reservation(self, task_id: str) -> None:
+        reservation = _spawn_reservation.get()
+        task = self._task_manager._async_tasks.get(task_id)
+        if reservation is None or task is None:
+            raise RuntimeError("background spawn receipt is unavailable")
+        reservation["deferred"] = True
+        task.add_done_callback(
+            lambda _task: reservation["budget"].release(reservation["id"])
+        )
+
     async def execute(self, params: BaseModel) -> ToolResult:
         p: AgentToolParams = params  # type: ignore[assignment]
+        if (
+            not self._parent_agent.permission_checker
+            and not self._parent_agent.permission_ceilings
+        ):
+            return ToolResult(
+                output="Parent permission policy is unavailable; child launch denied",
+                is_error=True,
+            )
+        token_budget = getattr(self._parent_agent, "token_budget", None)
+        if token_budget is not None and not token_budget.before_request():
+            return ToolResult(
+                output="Shared token budget exhausted or unknown; child launch denied",
+                is_error=True,
+            )
+        if p.isolation not in (None, "none", "worktree"):
+            return ToolResult(output="Unsupported isolation mode", is_error=True)
+        if p.team_name and p.isolation == "none":
+            return ToolResult(
+                output="Teammates require worktree isolation", is_error=True
+            )
+        definition = (
+            self._agent_loader.get(p.subagent_type) if p.subagent_type else None
+        )
+        if definition and definition.isolation == "worktree" and p.isolation == "none":
+            return ToolResult(
+                output="Agent definition requires worktree isolation", is_error=True
+            )
+        isolation = (
+            "worktree"
+            if p.isolation == "worktree"
+            else (definition.isolation if definition and p.isolation is None else "")
+        )
+        if isolation not in ("", None, "none", "worktree"):
+            return ToolResult(
+                output="Unsupported isolation in agent definition", is_error=True
+            )
+        if (
+            isolation == "worktree"
+            and (p.run_in_background or (definition and definition.background))
+            and not p.team_name
+        ):
+            return ToolResult(
+                output="Background worktree agents are not supported", is_error=True
+            )
+        budget = self._current_budget()
+        depth = getattr(self._parent_agent, "_spawn_depth", 0) + 1
+        try:
+            reservation_id = budget.reserve(depth)
+        except RuntimeError as exc:
+            return ToolResult(output=str(exc), is_error=True)
+        reservation = {"budget": budget, "id": reservation_id, "deferred": False}
+        token = _spawn_reservation.set(reservation)
+        try:
+            return await self._execute_impl(p, isolation)
+        finally:
+            _spawn_reservation.reset(token)
+            if not reservation["deferred"]:
+                budget.release(reservation_id)
 
+    async def _execute_impl(self, p: AgentToolParams, isolation: str) -> ToolResult:
         if p.team_name:
             return await self._execute_as_teammate(p)
-
-        isolation = ""
-        if p.subagent_type:
-            defn = self._agent_loader.get(p.subagent_type)
-            if defn and defn.isolation:
-                isolation = defn.isolation
-
         if isolation == "worktree":
             return await self._execute_with_worktree(p)
 
@@ -139,7 +333,7 @@ class AgentTool(Tool):
                     is_error=True,
                 )
             try:
-                parent_conv = getattr(self._parent_agent, '_current_conversation', None)
+                parent_conv = getattr(self._parent_agent, "_current_conversation", None)
                 if parent_conv is None:
                     return ToolResult(
                         output="Cannot fork: no active conversation in parent agent.",
@@ -169,7 +363,7 @@ class AgentTool(Tool):
             is_background = True
 
         # 过滤工具（coordinator 模式可能缩减了注册表，这里用完整注册表）
-        _base_registry = getattr(self._parent_agent, '_full_registry', None) or self._parent_agent.registry
+        _base_registry = self._enabled_parent_registry()
         filtered_registry = resolve_agent_tools(
             _base_registry, definition, is_background
         )
@@ -194,12 +388,13 @@ class AgentTool(Tool):
             registry=filtered_registry,
             protocol=self._parent_agent.protocol,
             work_dir=self._parent_agent.work_dir,
-            max_iterations=definition.max_turns,
+            max_iterations=min(definition.max_turns, self._parent_agent.max_iterations),
             permission_checker=checker,
             context_window=self._parent_agent.context_window,
             instructions_content=definition.system_prompt,
             hook_engine=self._parent_agent.hook_engine,
         )
+        self._configure_child(sub_agent)
         sub_agent.parent_id = self._parent_agent.agent_id
         sub_agent.trace_id = self._parent_agent.trace_id or self._parent_agent.agent_id
 
@@ -207,6 +402,7 @@ class AgentTool(Tool):
         # 决策——这样父子共享的 prompt cache 前缀才能保持字节级一致
         if p.subagent_type is None:
             from gcode.context import clone_replacement_state
+
             sub_agent.replacement_state = clone_replacement_state(
                 self._parent_agent.replacement_state
             )
@@ -230,7 +426,10 @@ class AgentTool(Tool):
                 task="" if is_fork else p.prompt,
                 name=agent_name,
                 fork_conversation=conversation if is_fork else None,
+                depth=sub_agent._spawn_depth,
+                budget_reserved=True,
             )
+            self._defer_reservation(task_id)
             return ToolResult(
                 output=f"Sub-agent launched in background.\n"
                 f"Task ID: {task_id}\n"
@@ -248,24 +447,30 @@ class AgentTool(Tool):
                 result_text = await sub_agent.run_to_completion(p.prompt)
         except Exception as e:
             self._trace_manager.complete(trace_node.agent_id, "failed")
-            return ToolResult(
-                output=f"Sub-agent failed: {e}", is_error=True
-            )
+            return ToolResult(output=f"Sub-agent failed: {e}", is_error=True)
 
         self._trace_manager.update(
             trace_node.agent_id,
             input_tokens=sub_agent.total_input_tokens,
             output_tokens=sub_agent.total_output_tokens,
         )
+        reason = getattr(sub_agent, "last_stop_reason", "completed")
+        if reason != "completed":
+            self._trace_manager.complete(trace_node.agent_id, reason)
+            return ToolResult(
+                output=f"Sub-agent stopped: {reason}\n{result_text or ''}",
+                is_error=True,
+            )
         self._trace_manager.complete(trace_node.agent_id, "completed")
-
         return ToolResult(output=result_text or "(sub-agent returned no output)")
 
     async def _execute_as_teammate(self, p: AgentToolParams) -> ToolResult:
         if self._team_manager is None:
             return ToolResult(output="TeamManager not configured.", is_error=True)
         if self._worktree_manager is None:
-            return ToolResult(output="WorktreeManager not configured for team spawn.", is_error=True)
+            return ToolResult(
+                output="WorktreeManager not configured for team spawn.", is_error=True
+            )
 
         from gcode.agents.fork import ForkError, build_forked_messages
         from gcode.agents.parser import AgentDef
@@ -284,7 +489,17 @@ class AgentTool(Tool):
 
         team = self._team_manager.get_team(p.team_name)
         if team is None:
-            return ToolResult(output=f"Team '{p.team_name}' not found. Create it first with TeamCreate.", is_error=True)
+            return ToolResult(
+                output=f"Team '{p.team_name}' not found. Create it first with TeamCreate.",
+                is_error=True,
+            )
+
+        backend = self._team_manager.detect_backend()
+        if backend != BackendType.IN_PROCESS:
+            return ToolResult(
+                output="Pane teammates cannot inherit verified parent permissions and budgets; use in-process mode.",
+                is_error=True,
+            )
 
         base_name = p.name or p.subagent_type or "worker"
         existing_names = {m.name for m in team.members}
@@ -312,9 +527,13 @@ class AgentTool(Tool):
         else:
             if self._enable_fork:
                 try:
-                    parent_conv = getattr(self._parent_agent, '_current_conversation', None)
+                    parent_conv = getattr(
+                        self._parent_agent, "_current_conversation", None
+                    )
                     if parent_conv is None:
-                        return ToolResult(output="Cannot fork: no active conversation.", is_error=True)
+                        return ToolResult(
+                            output="Cannot fork: no active conversation.", is_error=True
+                        )
                     conversation = build_forked_messages(parent_conv, p.prompt)
                     is_fork = True
                 except ForkError as e:
@@ -336,13 +555,14 @@ class AgentTool(Tool):
         try:
             wt = await self._worktree_manager.create(wt_name, "HEAD")
         except Exception as e:
-            return ToolResult(output=f"Failed to create worktree for teammate: {e}", is_error=True)
+            return ToolResult(
+                output=f"Failed to create worktree for teammate: {e}", is_error=True
+            )
 
         # 3. 选择 LLM
         client = self._select_llm(p, definition)
 
-        # 4. 检测后端类型
-        backend = self._team_manager.detect_backend()
+        # Backend was checked before creating any worktree.
 
         # 5. 构建队友的工具集
         trace_node = self._trace_manager.create(
@@ -352,15 +572,17 @@ class AgentTool(Tool):
         )
         agent_id = trace_node.agent_id
 
-        _has_full = getattr(self._parent_agent, '_full_registry', None) is not None
-        full_registry = getattr(self._parent_agent, '_full_registry', None) or self._parent_agent.registry
+        _has_full = getattr(self._parent_agent, "_full_registry", None) is not None
+        full_registry = self._enabled_parent_registry()
         _full_tools = [t.name for t in full_registry.list_tools()]
         log.info(
             "[teammate] has_full_registry=%s full_tools=%d names=%s backend=%s def_tools=%s def_disallowed=%s",
-            _has_full, len(_full_tools), _full_tools,
+            _has_full,
+            len(_full_tools),
+            _full_tools,
             backend.value,
-            getattr(definition, 'tools', []),
-            getattr(definition, 'disallowed_tools', []),
+            getattr(definition, "tools", []),
+            getattr(definition, "disallowed_tools", []),
         )
         teammate_registry = build_teammate_tools(
             parent_registry=full_registry,
@@ -371,6 +593,19 @@ class AgentTool(Tool):
             backend_type=backend.value,
             definition=definition,
         )
+        # Coordination tools also require parent authorization; never widen the tool set.
+        from gcode.tools import ToolRegistry
+
+        parent_names = {
+            tool.name
+            for tool in self._parent_agent.registry.list_tools()
+            if self._parent_agent.registry.is_enabled(tool.name)
+        }
+        bounded_registry = ToolRegistry()
+        for tool in teammate_registry.list_tools():
+            if tool.name in parent_names:
+                bounded_registry.register(tool)
+        teammate_registry = bounded_registry
         _tm_tools = [t.name for t in teammate_registry.list_tools()]
         log.info("[teammate] result_tools=%d names=%s", len(_tm_tools), _tm_tools)
 
@@ -389,12 +624,13 @@ class AgentTool(Tool):
             registry=teammate_registry,
             protocol=self._parent_agent.protocol,
             work_dir=wt.path,
-            max_iterations=definition.max_turns,
+            max_iterations=min(definition.max_turns, self._parent_agent.max_iterations),
             permission_checker=checker,
             context_window=self._parent_agent.context_window,
             instructions_content=instructions,
             hook_engine=self._parent_agent.hook_engine,
         )
+        self._configure_child(sub_agent, approved_worktree=True)
         sub_agent.parent_id = self._parent_agent.agent_id
         sub_agent.trace_id = self._parent_agent.trace_id or self._parent_agent.agent_id
         sub_agent.agent_id = agent_id
@@ -427,7 +663,10 @@ class AgentTool(Tool):
             task="" if is_fork else p.prompt,
             name=teammate_name,
             fork_conversation=conversation if is_fork else None,
+            depth=sub_agent._spawn_depth,
+            budget_reserved=True,
         )
+        self._defer_reservation(task_id)
 
         return ToolResult(
             output=(
@@ -440,57 +679,21 @@ class AgentTool(Tool):
             )
         )
 
-
     def _spawn_pane_teammate(
-        self, p: Any, team: Any, member: Any, backend: Any, wt: Any,
-        agent_id: str, teammate_name: str,
+        self,
+        p: Any,
+        team: Any,
+        member: Any,
+        backend: Any,
+        wt: Any,
+        agent_id: str,
+        teammate_name: str,
     ) -> ToolResult:
-        from gcode.teams.models import BackendType
-
-        mailbox = self._team_manager.get_mailbox(p.team_name)
-        mailbox_dir = str(mailbox._base_dir) if mailbox else ""
-
-        try:
-            if backend == BackendType.TMUX:
-                from gcode.teams.spawn_tmux import spawn_tmux_teammate
-                pane_info = spawn_tmux_teammate(
-                    team_name=p.team_name,
-                    teammate_name=teammate_name,
-                    worktree_path=wt.path,
-                    prompt=p.prompt,
-                    agent_type=p.subagent_type or "",
-                    model=p.model or "",
-                    mailbox_dir=mailbox_dir,
-                )
-                self._team_manager.register_pane_id(agent_id, pane_info.pane_id)
-            elif backend == BackendType.ITERM2:
-                from gcode.teams.spawn_iterm2 import spawn_iterm2_teammate
-                pane_info = spawn_iterm2_teammate(
-                    team_name=p.team_name,
-                    teammate_name=teammate_name,
-                    worktree_path=wt.path,
-                    prompt=p.prompt,
-                    agent_type=p.subagent_type or "",
-                    model=p.model or "",
-                    mailbox_dir=mailbox_dir,
-                )
-        except Exception as e:
-            log.warning("Pane spawn failed, falling back to in-process: %s", e)
-            return ToolResult(
-                output=f"Pane spawn failed ({e}), teammate not started. Retry or set teammate_mode to in-process.",
-                is_error=True,
-            )
-
+        # No secure cross-process transfer exists for parent permission ceilings and quota.
         return ToolResult(
-            output=(
-                f"Teammate '{teammate_name}' spawned in team '{p.team_name}'.\n"
-                f"Agent ID: {agent_id}\n"
-                f"Backend: {backend.value} (pane)\n"
-                f"Worktree: {wt.path}\n"
-                f"The teammate is running in an independent process."
-            )
+            output="Pane teammates cannot inherit verified parent permissions and budgets; use in-process mode.",
+            is_error=True,
         )
-
 
     def _select_llm(
         self,
@@ -509,7 +712,6 @@ class AgentTool(Tool):
                 return client
 
         return self._parent_agent.client
-
 
     async def _execute_with_worktree(self, p: AgentToolParams) -> ToolResult:
         if self._worktree_manager is None:
@@ -569,10 +771,8 @@ class AgentTool(Tool):
 
         client = self._select_llm(p, definition)
 
-        _base_registry = getattr(self._parent_agent, '_full_registry', None) or self._parent_agent.registry
-        filtered_registry = resolve_agent_tools(
-            _base_registry, definition, False
-        )
+        _base_registry = self._enabled_parent_registry()
+        filtered_registry = resolve_agent_tools(_base_registry, definition, False)
 
         pm_str = definition.permission_mode
         pm_enum = getattr(
@@ -592,12 +792,13 @@ class AgentTool(Tool):
             registry=filtered_registry,
             protocol=self._parent_agent.protocol,
             work_dir=wt.path,
-            max_iterations=definition.max_turns,
+            max_iterations=min(definition.max_turns, self._parent_agent.max_iterations),
             permission_checker=checker,
             context_window=self._parent_agent.context_window,
             instructions_content=definition.system_prompt,
             hook_engine=self._parent_agent.hook_engine,
         )
+        self._configure_child(sub_agent, approved_worktree=True)
         sub_agent.parent_id = self._parent_agent.agent_id
         sub_agent.trace_id = self._parent_agent.trace_id or self._parent_agent.agent_id
 
@@ -622,7 +823,8 @@ class AgentTool(Tool):
             input_tokens=sub_agent.total_input_tokens,
             output_tokens=sub_agent.total_output_tokens,
         )
-        self._trace_manager.complete(trace_node.agent_id, "completed")
+        reason = getattr(sub_agent, "last_stop_reason", "completed")
+        self._trace_manager.complete(trace_node.agent_id, reason)
 
         cleanup = await self._worktree_manager.auto_cleanup(wt_name, wt.head_commit)
         if cleanup.kept:
@@ -630,8 +832,12 @@ class AgentTool(Tool):
                 f"\n[Worktree preserved at {cleanup.path}, branch {cleanup.branch}]"
             )
 
+        if reason != "completed":
+            return ToolResult(
+                output=f"Sub-agent stopped: {reason}\n{result_text or ''}",
+                is_error=True,
+            )
         return ToolResult(output=result_text or "(sub-agent returned no output)")
-
 
     def _create_client_for_model(self, model_alias: str) -> LLMClient | None:
         if self._provider_config is None:

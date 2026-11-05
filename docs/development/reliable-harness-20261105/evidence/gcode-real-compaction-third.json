@@ -1,0 +1,32 @@
+{
+  "kind": "actual configured model manual_compact on synthetic-only history",
+  "model": "deepseek-flash",
+  "result_type": "CompactNotification",
+  "committed": true,
+  "literal_retained": true,
+  "result_marker_retained": false,
+  "todo_marker_retained": false,
+  "source_history_count": 14,
+  "before_count": 14,
+  "wall_ms": 6100.198291009292,
+  "usage": {
+    "scope": "c40be31b3f2c4faaa800be163b5523fe",
+    "max_total": 100000,
+    "prompt_uncached": 23796,
+    "output": 576,
+    "cache_read": 128,
+    "cache_write": 0,
+    "revision": 1,
+    "usage_unknown": 0,
+    "max_total_tokens": 100000,
+    "observed_total": 24500,
+    "remaining": 75500,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "error": null,
+  "scope": "one synthetic-history real-model compaction, not a semantic fidelity rate",
+  "synthetic_model_output_sha256": "d3d84465f996458955d459fa9aee147bdcc17519534453413f385218008165d5"
+}

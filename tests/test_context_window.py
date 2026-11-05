@@ -6,6 +6,7 @@
   3. 内置的「模型名 -> window」映射表（子串匹配）。
   4. 保守默认值（claude -> 200000，否则 -> 128000）。
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -37,6 +38,7 @@ def _provider(**overrides) -> ProviderConfig:
 # 第 1 层 —— 配置中提供的值优先级最高
 # ---------------------------------------------------------------------------
 
+
 class TestConfigPriority:
     def test_explicit_config_wins_over_mapping_table(self):
         # claude 默认映射到 200000，但显式配置的 window 必须覆盖它。
@@ -58,6 +60,7 @@ class TestConfigPriority:
 # ---------------------------------------------------------------------------
 # 第 3 层 —— 内置映射表，对每类模型做子串匹配
 # ---------------------------------------------------------------------------
+
 
 class TestMappingTable:
     @pytest.mark.parametrize(
@@ -97,6 +100,7 @@ class TestMappingTable:
 # 第 4 层 —— 保守默认值
 # ---------------------------------------------------------------------------
 
+
 class TestDefaults:
     def test_claude_default(self):
         # 没有其它线索的 claude 名称会命中 "claude" 映射表项。
@@ -110,13 +114,14 @@ class TestDefaults:
 # 第 2 层 —— 自动获取 + 缓存 + 优雅降级
 # ---------------------------------------------------------------------------
 
+
 class TestAutoFetch:
     @pytest.mark.asyncio
     async def test_fetch_success_is_cached_and_used(self):
         p = _provider(model="claude-sonnet-4-6")
         fake = AsyncMock()
         fake.fetch_model_context_window = AsyncMock(return_value=555_000)
-        with patch("GCode.client.create_client", return_value=fake) as mk:
+        with patch("gcode.client.create_client", return_value=fake) as mk:
             await resolve_context_window(p)
             # 此时第 2 层的值优先级高于映射表（200000）。
             assert p.get_context_window() == 555_000
@@ -128,10 +133,8 @@ class TestAutoFetch:
     async def test_fetch_raises_degrades_to_mapping_table(self):
         p = _provider(model="claude-sonnet-4-6")
         fake = AsyncMock()
-        fake.fetch_model_context_window = AsyncMock(
-            side_effect=RuntimeError("boom")
-        )
-        with patch("GCode.client.create_client", return_value=fake):
+        fake.fetch_model_context_window = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("gcode.client.create_client", return_value=fake):
             # 不应抛出异常。
             await resolve_context_window(p)
         # 对 claude 回退到映射表。
@@ -142,7 +145,7 @@ class TestAutoFetch:
         p = _provider(model="totally-unknown-model")
         fake = AsyncMock()
         fake.fetch_model_context_window = AsyncMock(return_value=None)
-        with patch("GCode.client.create_client", return_value=fake):
+        with patch("gcode.client.create_client", return_value=fake):
             await resolve_context_window(p)
         # 既没获取到、也没匹配到 → 使用保守默认值。
         assert p.get_context_window() == 128_000
@@ -152,7 +155,7 @@ class TestAutoFetch:
         # 例如缺少 API key 会在 create_client 内部抛错 —— 必须被吞掉。
         p = _provider(model="claude-sonnet-4-6")
         with patch(
-            "GCode.client.create_client",
+            "gcode.client.create_client",
             side_effect=Exception("no api key"),
         ):
             await resolve_context_window(p)
@@ -161,7 +164,7 @@ class TestAutoFetch:
     @pytest.mark.asyncio
     async def test_non_anthropic_provider_is_not_fetched(self):
         p = _provider(protocol="openai-compat", model="gpt-4o")
-        with patch("GCode.client.create_client") as mk:
+        with patch("gcode.client.create_client") as mk:
             await resolve_context_window(p)
             mk.assert_not_called()
         # 完全通过映射表解析。
@@ -170,7 +173,7 @@ class TestAutoFetch:
     @pytest.mark.asyncio
     async def test_explicit_config_skips_fetch(self):
         p = _provider(model="claude-sonnet-4-6", context_window=4096)
-        with patch("GCode.client.create_client") as mk:
+        with patch("gcode.client.create_client") as mk:
             await resolve_context_window(p)
             mk.assert_not_called()
         assert p.get_context_window() == 4096
@@ -180,7 +183,7 @@ class TestAutoFetch:
         p = _provider(model="claude-sonnet-4-6")
         fake = AsyncMock()
         fake.fetch_model_context_window = AsyncMock(return_value=0)
-        with patch("GCode.client.create_client", return_value=fake):
+        with patch("gcode.client.create_client", return_value=fake):
             await resolve_context_window(p)
         # 0 绝不能被缓存；仍然走映射表。
         assert p._fetched_context_window == 0
@@ -190,6 +193,7 @@ class TestAutoFetch:
 # ---------------------------------------------------------------------------
 # Validator —— 未设置的 context_window 保持为 0（表示「未设置」），并校验取值
 # ---------------------------------------------------------------------------
+
 
 class TestValidator:
     def test_unset_context_window_defaults_to_zero(self):

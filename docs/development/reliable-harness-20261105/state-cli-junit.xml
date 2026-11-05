@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="14" time="1.035" timestamp="2026-11-06T00:01:01.854680+08:00" hostname="MacBook-Pro.local"><testcase classname="tests.test_cli_budget" name="test_budget_option_rejects_nonpositive_and_invalid[0]" time="0.001" /><testcase classname="tests.test_cli_budget" name="test_budget_option_rejects_nonpositive_and_invalid[-1]" time="0.001" /><testcase classname="tests.test_cli_budget" name="test_budget_option_rejects_nonpositive_and_invalid[abc]" time="0.001" /><testcase classname="tests.test_cli_budget" name="test_budget_option_reaches_desktop_app" time="0.236" /><testcase classname="tests.test_spawn_integration" name="test_foreground_and_worktree_inherit_permission_and_budget" time="0.013" /><testcase classname="tests.test_spawn_integration" name="test_isolation_and_pane_fail_closed_before_worktree" time="0.007" /><testcase classname="tests.test_spawn_integration" name="test_limits_foreground_background_and_stop_reason" time="0.015" /><testcase classname="tests.test_spawn_integration" name="test_inprocess_teammate_keeps_permission_ceiling" time="0.013" /><testcase classname="tests.test_spawn_integration" name="test_spawn_budget_enforced_across_recreated_manager" time="0.010" /><testcase classname="tests.test_spawn_integration" name="test_missing_parent_policy_denies_child" time="0.004" /><testcase classname="tests.test_spawn_integration" name="test_headless_entry_uses_durable_session_scope" time="0.003"><failure message="TypeError: Agent.__init__() got an unexpected keyword argument 'max_total_tokens'">tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-170/test_headless_entry_uses_durab0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x10bd182c0&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0x10bd4d3d0&gt;
+
+    @pytest.mark.asyncio
+    async def test_headless_entry_uses_durable_session_scope(tmp_path, monkeypatch, capsys):
+        from gcode.__main__ import _run_prompt
+        from gcode.permissions import PermissionMode
+        import gcode.client, gcode.agents.task_manager
+        created=[]; seen=[]
+        class CapturingManager(TaskManager):
+            def __init__(self,*args,**kwargs): super().__init__(*args,**kwargs); created.append(self)
+        async def context(provider): return None
+        async def run(self,prompt,conversation):
+            seen.append((self.session_id,self.token_budget.max_total_tokens)); self.last_stop_reason='completed'; return 'ok'
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(gcode.client,'create_client',lambda provider: MagicMock())
+        monkeypatch.setattr(gcode.client,'resolve_context_window',context)
+        monkeypatch.setattr(gcode.agents.task_manager,'TaskManager',CapturingManager)
+        monkeypatch.setattr(Agent,'run_to_completion',run)
+        provider=SimpleNamespace(protocol='anthropic',get_context_window=lambda: 10000)
+        config=SimpleNamespace(providers=[provider],worktree=None,enable_verification_agent=False,enable_fork=False,enable_coordinator_mode=False)
+&gt;       await _run_prompt(config,PermissionMode.DONT_ASK,None,'hello',137)
+
+<WORKSPACE>/work/research/gcode/tests/test_spawn_integration.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+config = namespace(providers=[namespace(protocol='anthropic', get_context_window=&lt;function test_headless_entry_uses_durable_ses...a&gt; at 0x10bd30900&gt;)], worktree=None, enable_verification_agent=False, enable_fork=False, enable_coordinator_mode=False)
+permission_mode = &lt;PermissionMode.DONT_ASK: 'dontAsk'&gt;, hook_engine = None
+prompt = 'hello', max_total_tokens = 137
+
+    async def _run_prompt(config, permission_mode, hook_engine, prompt: str, max_total_tokens: int = 1_000_000) -&gt; None:
+        from gcode.agent import Agent
+        from gcode.client import create_client, resolve_context_window
+        from gcode.conversation import ConversationManager
+        from gcode.memory.instructions import load_instructions
+        from gcode.memory.session import SessionManager
+        from gcode.permissions import (
+            DangerousCommandDetector,
+            PathSandbox,
+            PermissionChecker,
+            RuleEngine,
+        )
+        from gcode.tools import create_default_registry
+        from gcode.agents.loader import AgentLoader
+        from gcode.agents.task_manager import TaskManager
+        from gcode.agents.trace import TraceManager
+        from gcode.tools.agent_tool import AgentTool
+        from gcode.tools.impl.tool_search import ToolSearchTool
+        from gcode.teams.manager import TeamManager
+        from gcode.teams.models import BackendType
+        from gcode.tools.team_create import TeamCreateTool
+        from gcode.tools.team_delete import TeamDeleteTool
+        from gcode.worktree import WorktreeManager
+        from gcode.config import WorktreeConfig
+    
+        provider = config.providers[0]
+        client = create_client(provider)
+        # 第 2 层：尽力从 provider 自动拉取模型的 context window（缓存在 provider 上）。
+        # 不会抛异常或阻塞启动；失败则退化到映射表。
+        await resolve_context_window(provider)
+        work_dir = os.getcwd()
+        home = Path.home()
+    
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(work_dir),
+            rule_engine=RuleEngine(
+                user_rules_path=home / ".gcode" / "permissions.yaml",
+                project_rules_path=Path(work_dir) / ".gcode" / "permissions.yaml",
+                local_rules_path=Path(work_dir) / ".gcode" / "permissions.local.yaml",
+            ),
+            mode=permission_mode,
+        )
+    
+        instructions = load_instructions(work_dir)
+        registry = create_default_registry()
+        registry.register(ToolSearchTool(registry, protocol=provider.protocol))
+    
+&gt;       agent = Agent(
+            client=client,
+            registry=registry,
+            protocol=provider.protocol,
+            work_dir=work_dir,
+            permission_checker=checker,
+            context_window=provider.get_context_window(),
+            instructions_content=instructions,
+            hook_engine=hook_engine,
+            max_total_tokens=max_total_tokens,
+        )
+E       TypeError: Agent.__init__() got an unexpected keyword argument 'max_total_tokens'
+
+<WORKSPACE>/work/research/gcode/gcode/__main__.py:142: TypeError</failure></testcase><testcase classname="tests.test_spawn_integration" name="test_disabled_parent_tool_is_not_reenabled" time="0.008" /><testcase classname="tests.test_spawn_integration" name="test_owned_sibling_worktree_rebases_path_only_and_preserves_denies" time="0.126" /><testcase classname="tests.test_spawn_integration" name="test_exhausted_parent_budget_blocks_child_before_worktree" time="0.006" /></testsuite></testsuites>

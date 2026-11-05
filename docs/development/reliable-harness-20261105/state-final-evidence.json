@@ -1,0 +1,22 @@
+{
+  "base_commit": "221c870f8cc0872e6704a0140f1dd9923ac66a5c",
+  "python": "3.9.6",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "timestamp_utc": "2026-11-05T17:35:50.762451+00:00",
+  "result": "52 passed",
+  "junit": "state-bash-streaming-junit.xml",
+  "log": "state-bash-streaming.log",
+  "rss_log": "state-bash-rss.log",
+  "file_sha256": {
+    "gcode/tools/bash.py": "03933282a0ef308a31be27d2e482ec8ba478f66751ec49263647487e19dc0fbd",
+    "gcode/runtime/artifacts.py": "85006a530d7fbaee6c09af4744a8bfb713392ebc29e631d9dad0e01b0835f6ce",
+    "gcode/runtime/store.py": "32253bdeaa4242a3aa643c9f42d4ed52f7d90f96c8a1ea4773b30c52046616ed",
+    "gcode/agents/task_manager.py": "c0f64680652235174d06ddda1a78c47ba0b39df963be723190aff3582b92227f",
+    "gcode/teams/mailbox.py": "2d3d718166095d0f5bdd918558d1f965a0877d6f687029e1bbcda988923f78e2",
+    "gcode/worktree/manager.py": "2dab220d35cb43683e46bbe2521488d521afa3e06435e852aeeead9d8d1d8b09",
+    "tests/test_bash_streaming.py": "a9f74606c3c73e6f391d25611a2beba9a48db56a4a679aad5b8720f9ef5a01a0",
+    "tests/test_artifact_store.py": "2041d332e4108f16393eaf7a8bcaed021b96e31dde0d7a8059926aff3548fae4",
+    "tests/test_interruption.py": "233475b69ea009a003ee8143771329fac988ea7a446684fb1a0dd7d236743aad",
+    "tests/test_execution_context.py": "2c90031af2f2743bfc2a87d3572d6d95dd9391fe207f381bcfe24b94ae93a990"
+  }
+}

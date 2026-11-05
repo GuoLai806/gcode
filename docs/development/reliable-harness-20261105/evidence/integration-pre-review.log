@@ -1,0 +1,1870 @@
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:300: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+.F....F.....F......................................F..........F......... [ 11%]
+.............F..............................................FFFFFFF..... [ 22%]
+..................................................................F..... [ 33%]
+..............E....F...............FF............FFFFFF..FF............. [ 44%]
+......................................................................F. [ 55%]
+......F.....F.F......................................................... [ 66%]
+........................................................................ [ 77%]
+.......................F.................FFFF..................FFF.F.... [ 89%]
+.........................................EEEEEEEEEEEEEEEEEE............  [100%]
+==================================== ERRORS ====================================
+______ ERROR at teardown of TestHookEngine.test_async_hook_does_not_block ______
+
+event_loop_policy = <asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x10e4fb080>
+_asyncio_loop_factory = None
+request = <SubRequest '_function_scoped_runner' for <Coroutine test_async_hook_does_not_block>>
+
+    @pytest.fixture(
+        scope=scope,
+        name=f"_{scope}_scoped_runner",
+    )
+    def _scoped_runner(
+        event_loop_policy,
+        _asyncio_loop_factory,
+        request: FixtureRequest,
+    ) -> Iterator[Runner]:
+        new_loop_policy = event_loop_policy
+        debug_mode = _get_asyncio_debug(request.config)
+        with _temporary_event_loop_policy(new_loop_policy):
+            runner = Runner(
+                debug=debug_mode,
+                loop_factory=_asyncio_loop_factory,
+            ).__enter__()
+            if _asyncio_loop_factory is not None:
+                _set_event_loop(runner.get_loop())
+            try:
+                yield runner
+            except Exception as e:
+                runner.__exit__(type(e), e, e.__traceback__)
+            else:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore", ".*BaseEventLoop.shutdown_asyncgens.*", RuntimeWarning
+                    )
+                    try:
+>                       runner.__exit__(None, None, None)
+
+../../dev/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:1053: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:62: in __exit__
+    self.close()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:70: in close
+    _cancel_all_tasks(loop)
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:206: in _cancel_all_tasks
+    loop.run_until_complete(tasks.gather(*to_cancel, return_exceptions=True))
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <selectors.KqueueSelector object at 0x10e971010>, timeout = None
+
+    def select(self, timeout=None):
+        timeout = None if timeout is None else max(timeout, 0)
+        # If max_ev is 0, kqueue will ignore the timeout. For consistent
+        # behavior with the other selector classes, we prevent that here
+        # (using max). See https://bugs.python.org/issue29255
+        max_ev = self._max_events or 1
+        ready = []
+        try:
+>           kev_list = self._selector.control(None, max_ev, timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: Timeout (>12.0s) from pytest-timeout.
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/selectors.py:566: Failed
+______________ ERROR at setup of TestWorktreeManager.test_create _______________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_create0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+________ ERROR at setup of TestWorktreeManager.test_create_invalid_slug ________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_create_invalid_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_________ ERROR at setup of TestWorktreeManager.test_create_duplicate __________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_create_duplicate0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+________ ERROR at setup of TestWorktreeManager.test_create_nested_slug _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_create_nested_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+___________ ERROR at setup of TestWorktreeManager.test_fast_recovery ___________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_fast_recovery0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_________ ERROR at setup of TestWorktreeManager.test_enter_and_session _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_enter_and_session0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+________ ERROR at setup of TestWorktreeManager.test_enter_clears_cache _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_enter_clears_cache0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_____________ ERROR at setup of TestWorktreeManager.test_exit_keep _____________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_exit_keep0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_________ ERROR at setup of TestWorktreeManager.test_exit_remove_clean _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_exit_remove_clean0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_ ERROR at setup of TestWorktreeManager.test_exit_remove_with_changes_blocked __
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_exit_remove_with_changes_0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+__________ ERROR at setup of TestWorktreeManager.test_list_worktrees ___________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_list_worktrees0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_________ ERROR at setup of TestWorktreeManager.test_enter_nonexistent _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_enter_nonexistent0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+__________ ERROR at setup of TestChangeDetection.test_clean_worktree ___________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_clean_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+________ ERROR at setup of TestChangeDetection.test_uncommitted_changes ________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_uncommitted_changes0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+____________ ERROR at setup of TestChangeDetection.test_new_commits ____________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_new_commits0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+____ ERROR at setup of TestChangeDetection.test_auto_cleanup_removes_clean _____
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_auto_cleanup_removes_clea0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+_____ ERROR at setup of TestChangeDetection.test_auto_cleanup_keeps_dirty ______
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_auto_cleanup_keeps_dirty0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+________ ERROR at setup of TestReadWorktreeHeadSha.test_valid_worktree _________
+
+git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_valid_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+>       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError
+=================================== FAILURES ===================================
+__________________________ test_multi_step_autonomous __________________________
+
+    @pytest.mark.asyncio
+    async def test_multi_step_autonomous():
+        """Agent 先 WriteFile 再 ReadFile 然后停止 —— 端到端的多步流程。"""
+        client = MockLLMClient([
+            # 第 1 轮：WriteFile
+            [
+                TextDelta("Creating file."),
+                ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/GCode_test_hello.txt", "content": "Hello World"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：ReadFile 进行验证
+            [
+                TextDelta("Verifying content."),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/GCode_test_hello.txt"}),
+                StreamEnd("end_turn", input_tokens=40, output_tokens=25),
+            ],
+            # 第 3 轮：最终答案
+            [
+                TextDelta("File created and verified. Content is correct."),
+                StreamEnd("end_turn", input_tokens=60, output_tokens=30),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir="/tmp")
+        conv = ConversationManager()
+        conv.add_user_message("Create hello.txt with Hello World, then verify")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["tool_use"]) == 2
+        assert c["tool_use"][0].tool_name == "WriteFile"
+        assert c["tool_use"][1].tool_name == "ReadFile"
+        assert len(c["turn"]) == 2
+        assert len(c["loop"]) == 1
+        assert c["loop"][0].total_turns == 3
+        # 验证文件确实被创建了
+>       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=0.00030524999601766467).is_error
+
+tests/test_agent.py:159: AssertionError
+____________________________ test_message_splicing _____________________________
+
+    @pytest.mark.asyncio
+    async def test_message_splicing():
+        """assistant 消息包含 text + 多个 tool_use；对应的 tool_result 被打包在一起。"""
+        client = MockLLMClient([
+            # 第 1 轮：一个响应里包含两次工具调用
+            [
+                TextDelta("Reading two files."),
+                ToolCallComplete("t1", "ReadFile", {"file_path": "README.md"}),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "pyproject.toml"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：最终响应
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=10),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir=".")
+        conv = ConversationManager()
+        conv.add_user_message("Read both files")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        # 检查对话历史
+        msgs = build_anthropic_messages(conv.get_messages())
+        # env_context(user) + user_message + assistant(text+2 个 tool_use) + user(2 个 tool_result) + assistant(最终响应)
+>       assert len(msgs) == 5
+E       assert 4 == 5
+E        +  where 4 = len([{'role': 'user', 'content': 'Current working directory: .\nOperating system: Darwin 25.6.0\nCurrent time: 2026-11-05 ...st>=9.0.3",\n29\t    "pytest-asyncio>=1.3.0",\n30\t]', 'is_error': False}]}, {'role': 'assistant', 'content': 'Done.'}])
+
+tests/test_agent.py:314: AssertionError
+__________________________ test_system_prompt_normal ___________________________
+
+    def test_system_prompt_normal():
+        sp = build_system_prompt()
+>       assert "gcode" in sp
+E       AssertionError: assert 'gcode' in 'You are GCode, an AI programming assistant running in the terminal. You help users with software engineering tasks in...xt, not intermediate files.\n\n# Environment\n - Working directory: .\n - Platform: Darwin 25.6.0\n - Date: 2026-11-05'
+
+tests/test_agent.py:476: AssertionError
+___________________ TestPlanDoHandlers.test_do_switches_back ___________________
+
+self = <test_commands.TestPlanDoHandlers object at 0x10e3117c0>
+
+    @pytest.mark.asyncio
+    async def test_do_switches_back(self) -> None:
+>       from gcode.commands.handlers.do import handle_do
+E       ModuleNotFoundError: No module named 'gcode.commands.handlers.do'
+
+tests/test_commands.py:313: ModuleNotFoundError
+_____________ TestRegisterAllCommands.test_all_commands_registered _____________
+
+self = <test_commands.TestRegisterAllCommands object at 0x10e3105c0>
+
+    def test_all_commands_registered(self) -> None:
+        from gcode.commands.handlers import register_all_commands
+    
+        registry = CommandRegistry()
+        register_all_commands(registry)
+        cmds = registry.list_commands()
+        names = {c.name for c in cmds}
+        expected = {
+            "help", "compact", "clear", "plan", "do",
+            "session", "mcp", "memory", "permission",
+            "rewind", "status", "skill",
+        }
+>       assert names == expected
+E       AssertionError: assert {'clear', 'co...mission', ...} == {'clear', 'co...'memory', ...}
+E         
+E         Extra items in the right set:
+E         'do'
+E         Use -v to get more diff
+
+tests/test_commands.py:466: AssertionError
+________________ TestBuildCompactMessages.test_basic_structure _________________
+
+self = <test_context.TestBuildCompactMessages object at 0x10e33da90>
+
+    def test_basic_structure(self) -> None:
+        msgs = build_compact_messages("the summary")
+>       assert len(msgs) == 2
+E       AssertionError: assert 1 == 2
+E        +  where 1 = len([Message(role='user', content='本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\nthe summary', tool_uses=[], tool_results=[], thinking_blocks=[])])
+
+tests/test_context.py:250: AssertionError
+_____________ TestAutoFetch.test_fetch_success_is_cached_and_used ______________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36c890>
+
+    @pytest.mark.asyncio
+    async def test_fetch_success_is_cached_and_used(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=555_000)
+>       with patch("GCode.client.create_client", return_value=fake) as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+__________ TestAutoFetch.test_fetch_raises_degrades_to_mapping_table ___________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36cc80>
+
+    @pytest.mark.asyncio
+    async def test_fetch_raises_degrades_to_mapping_table(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+>       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:134: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+__________ TestAutoFetch.test_fetch_returns_none_degrades_to_default ___________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36cfe0>
+
+    @pytest.mark.asyncio
+    async def test_fetch_returns_none_degrades_to_default(self):
+        p = _provider(model="totally-unknown-model")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=None)
+>       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+___________ TestAutoFetch.test_client_construction_failure_degrades ____________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36d340>
+
+    @pytest.mark.asyncio
+    async def test_client_construction_failure_degrades(self):
+        # 例如缺少 API key 会在 create_client 内部抛错 —— 必须被吞掉。
+        p = _provider(model="claude-sonnet-4-6")
+>       with patch(
+            "GCode.client.create_client",
+            side_effect=Exception("no api key"),
+        ):
+
+tests/test_context_window.py:154: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+___________ TestAutoFetch.test_non_anthropic_provider_is_not_fetched ___________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36d6a0>
+
+    @pytest.mark.asyncio
+    async def test_non_anthropic_provider_is_not_fetched(self):
+        p = _provider(protocol="openai-compat", model="gpt-4o")
+>       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+________________ TestAutoFetch.test_explicit_config_skips_fetch ________________
+
+self = <test_context_window.TestAutoFetch object at 0x10e36da00>
+
+    @pytest.mark.asyncio
+    async def test_explicit_config_skips_fetch(self):
+        p = _provider(model="claude-sonnet-4-6", context_window=4096)
+>       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+_____________ TestAutoFetch.test_zero_or_negative_fetch_is_ignored _____________
+
+self = <test_context_window.TestAutoFetch object at 0x10e3116d0>
+
+    @pytest.mark.asyncio
+    async def test_zero_or_negative_fetch_is_ignored(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=0)
+>       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+______________________ TestHttpExecutor.test_mock_request ______________________
+
+self = <test_hooks.TestHttpExecutor object at 0x10e43e210>
+
+    @pytest.mark.asyncio
+    async def test_mock_request(self):
+        from gcode.hooks.executors import execute_http
+    
+        action = Action(type="http", url="https://httpbin.org/post", body='{"test": true}')
+        ctx = HookContext()
+        # 用 mock 避免发起真实的网络请求
+>       with patch("GCode.hooks.executors.urlopen") as mock_urlopen:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_hooks.py:276: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+_______ test_close_during_model_stream_does_not_execute_incomplete_batch _______
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_close_during_model_stream0')
+
+    @pytest.mark.asyncio
+    async def test_close_during_model_stream_does_not_execute_incomplete_batch(tmp_path):
+        tool = GatedTool()
+        agent, client = make_agent(tmp_path, tool, [calls("fast", "slow"),
+                                                 [TextDelta("continued"), StreamEnd("end_turn")]])
+        conv = ConversationManager()
+        conv.add_user_message("first")
+        stream = agent.run(conv)
+        await anext(stream)  # Complete tool block received, but stream has not finished.
+        await stream.aclose()
+        assert client.closed == 1
+        assert not tool.finished and not tool.started.is_set()
+        assert_closed(conv)
+        conv.add_user_message("continue")
+        await consume(agent, conv)
+>       assert conv.history[-1].content == "continued"
+E       AssertionError: assert 'continue' == 'continued'
+E         
+E         - continued
+E         ?         -
+E         + continue
+
+tests/test_interruption.py:165: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    asyncio:base_events.py:1833 Task was destroyed but it is pending!
+task: <Task cancelling name='Task-345' coro=<HookEngine._run_single() running at <WORKSPACE>/work/research/gcode/gcode/hooks/engine.py:53> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[gather.<locals>._done_callback() at <HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py:767]>
+___ test_failed_turn_can_continue_without_repeating_completed_tool[network] ____
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_failed_turn_can_continue_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x117b3c500>
+failure = 'network'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure", ["network", "unexpected"])
+    async def test_failed_turn_can_continue_without_repeating_completed_tool(tmp_path, monkeypatch, failure):
+        from gcode.app import ChatInput, GCodeApp
+        from gcode.config import ProviderConfig
+        from gcode.client import NetworkError
+        import gcode.app as app_module
+        error = NetworkError("test disconnected") if failure == "network" else RuntimeError("test failure")
+        client = ScriptClient([calls("fast"), error, [TextDelta("continued"), StreamEnd("end_turn")]])
+        tool = GatedTool()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(app_module, "create_client", lambda provider: client)
+        app = GCodeApp([ProviderConfig("test", "anthropic", "https://example.invalid", "test", "test")])
+        errors = []
+        original_show_error = app._show_error
+        def record_error(message):
+            errors.append(message)
+            original_show_error(message)
+        app._show_error = record_error
+        async with app.run_test(size=(100, 40)) as pilot:
+            app.registry.register(tool)
+            app.agent.memory_manager = None
+            widget = app.query_one("#chat-input", ChatInput)
+            widget.insert("first")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not errors:
+                    await pilot.pause(.02)
+            assert_closed(app.conversation)
+            widget.insert("continue")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not any(m.content == "continued" for m in app.conversation.history):
+>                   await pilot.pause(.02)
+
+<WORKSPACE>/work/research/gcode/tests/test_interruption.py:471: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/textual/pilot.py:546: in pause
+    await asyncio.sleep(delay)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+delay = 0.02, result = None
+
+    async def sleep(delay, result=None):
+        """Coroutine that completes after a given time (in seconds)."""
+        if delay <= 0:
+            await __sleep0()
+            return result
+    
+        loop = events.get_running_loop()
+        future = loop.create_future()
+        h = loop.call_later(delay,
+                            futures._set_result_unless_cancelled,
+                            future, result)
+        try:
+>           return await future
+                   ^^^^^^^^^^^^
+E           asyncio.exceptions.CancelledError
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py:665: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_failed_turn_can_continue_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x117b3c500>
+failure = 'network'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure", ["network", "unexpected"])
+    async def test_failed_turn_can_continue_without_repeating_completed_tool(tmp_path, monkeypatch, failure):
+        from gcode.app import ChatInput, GCodeApp
+        from gcode.config import ProviderConfig
+        from gcode.client import NetworkError
+        import gcode.app as app_module
+        error = NetworkError("test disconnected") if failure == "network" else RuntimeError("test failure")
+        client = ScriptClient([calls("fast"), error, [TextDelta("continued"), StreamEnd("end_turn")]])
+        tool = GatedTool()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(app_module, "create_client", lambda provider: client)
+        app = GCodeApp([ProviderConfig("test", "anthropic", "https://example.invalid", "test", "test")])
+        errors = []
+        original_show_error = app._show_error
+        def record_error(message):
+            errors.append(message)
+            original_show_error(message)
+        app._show_error = record_error
+        async with app.run_test(size=(100, 40)) as pilot:
+            app.registry.register(tool)
+            app.agent.memory_manager = None
+            widget = app.query_one("#chat-input", ChatInput)
+            widget.insert("first")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not errors:
+                    await pilot.pause(.02)
+            assert_closed(app.conversation)
+            widget.insert("continue")
+            await pilot.press("enter")
+>           async with asyncio.timeout(5):
+                       ^^^^^^^^^^^^^^^^^^
+
+<WORKSPACE>/work/research/gcode/tests/test_interruption.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Timeout [expired]>
+exc_type = <class 'asyncio.exceptions.CancelledError'>
+exc_val = CancelledError(), exc_tb = <traceback object at 0x117d4b080>
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is exceptions.CancelledError:
+                # Since there are no new cancel requests, we're
+                # handling this.
+>               raise TimeoutError from exc_val
+E               TimeoutError
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/timeouts.py:115: TimeoutError
+__ test_failed_turn_can_continue_without_repeating_completed_tool[unexpected] __
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_failed_turn_can_continue_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x117ce2cf0>
+failure = 'unexpected'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure", ["network", "unexpected"])
+    async def test_failed_turn_can_continue_without_repeating_completed_tool(tmp_path, monkeypatch, failure):
+        from gcode.app import ChatInput, GCodeApp
+        from gcode.config import ProviderConfig
+        from gcode.client import NetworkError
+        import gcode.app as app_module
+        error = NetworkError("test disconnected") if failure == "network" else RuntimeError("test failure")
+        client = ScriptClient([calls("fast"), error, [TextDelta("continued"), StreamEnd("end_turn")]])
+        tool = GatedTool()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(app_module, "create_client", lambda provider: client)
+        app = GCodeApp([ProviderConfig("test", "anthropic", "https://example.invalid", "test", "test")])
+        errors = []
+        original_show_error = app._show_error
+        def record_error(message):
+            errors.append(message)
+            original_show_error(message)
+        app._show_error = record_error
+        async with app.run_test(size=(100, 40)) as pilot:
+            app.registry.register(tool)
+            app.agent.memory_manager = None
+            widget = app.query_one("#chat-input", ChatInput)
+            widget.insert("first")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not errors:
+                    await pilot.pause(.02)
+            assert_closed(app.conversation)
+            widget.insert("continue")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not any(m.content == "continued" for m in app.conversation.history):
+>                   await pilot.pause(.02)
+
+<WORKSPACE>/work/research/gcode/tests/test_interruption.py:471: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/textual/pilot.py:546: in pause
+    await asyncio.sleep(delay)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+delay = 0.02, result = None
+
+    async def sleep(delay, result=None):
+        """Coroutine that completes after a given time (in seconds)."""
+        if delay <= 0:
+            await __sleep0()
+            return result
+    
+        loop = events.get_running_loop()
+        future = loop.create_future()
+        h = loop.call_later(delay,
+                            futures._set_result_unless_cancelled,
+                            future, result)
+        try:
+>           return await future
+                   ^^^^^^^^^^^^
+E           asyncio.exceptions.CancelledError
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/tasks.py:665: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_failed_turn_can_continue_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x117ce2cf0>
+failure = 'unexpected'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure", ["network", "unexpected"])
+    async def test_failed_turn_can_continue_without_repeating_completed_tool(tmp_path, monkeypatch, failure):
+        from gcode.app import ChatInput, GCodeApp
+        from gcode.config import ProviderConfig
+        from gcode.client import NetworkError
+        import gcode.app as app_module
+        error = NetworkError("test disconnected") if failure == "network" else RuntimeError("test failure")
+        client = ScriptClient([calls("fast"), error, [TextDelta("continued"), StreamEnd("end_turn")]])
+        tool = GatedTool()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(app_module, "create_client", lambda provider: client)
+        app = GCodeApp([ProviderConfig("test", "anthropic", "https://example.invalid", "test", "test")])
+        errors = []
+        original_show_error = app._show_error
+        def record_error(message):
+            errors.append(message)
+            original_show_error(message)
+        app._show_error = record_error
+        async with app.run_test(size=(100, 40)) as pilot:
+            app.registry.register(tool)
+            app.agent.memory_manager = None
+            widget = app.query_one("#chat-input", ChatInput)
+            widget.insert("first")
+            await pilot.press("enter")
+            async with asyncio.timeout(5):
+                while app._streaming or not errors:
+                    await pilot.pause(.02)
+            assert_closed(app.conversation)
+            widget.insert("continue")
+            await pilot.press("enter")
+>           async with asyncio.timeout(5):
+                       ^^^^^^^^^^^^^^^^^^
+
+<WORKSPACE>/work/research/gcode/tests/test_interruption.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Timeout [expired]>
+exc_type = <class 'asyncio.exceptions.CancelledError'>
+exc_val = CancelledError(), exc_tb = <traceback object at 0x118a530c0>
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is exceptions.CancelledError:
+                # Since there are no new cancel requests, we're
+                # handling this.
+>               raise TimeoutError from exc_val
+E               TimeoutError
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/timeouts.py:115: TimeoutError
+------------------------------ Captured log call -------------------------------
+ERROR    gcode.app:app.py:1476 Agent turn failed
+Traceback (most recent call last):
+  File "<WORKSPACE>/work/research/gcode/gcode/app.py", line 1314, in _send_message_impl
+    async for event in agent_stream:
+  File "<WORKSPACE>/work/research/gcode/gcode/agent.py", line 515, in run
+    async for event in stream:
+  File "<WORKSPACE>/work/research/gcode/gcode/agent.py", line 671, in _run
+    async for event in collected_stream:
+  File "<WORKSPACE>/work/research/gcode/gcode/agent.py", line 198, in consume
+    async for event in stream:
+  File "<WORKSPACE>/work/research/gcode/tests/test_interruption.py", line 52, in stream
+    raise events
+RuntimeError: test failure
+_____________________ TestLoadConfigMCP.test_stdio_server ______________________
+
+self = <test_mcp.TestLoadConfigMCP object at 0x10e494440>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_stdio_server0')
+
+    def test_stdio_server(self, tmp_path: Path) -> None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              github:
+                command: npx
+                args: ["-y", "@modelcontextprotocol/server-github"]
+                env:
+                  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+        """)
+>       config = load_config(path)
+                 ^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/config.py:225: in load_config
+    return _load_single_file(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+gcode/config.py:146: in _load_single_file
+    validated = validate_config_structure(raw)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gcode/validator.py:230: in validate_config_structure
+    "mcp_servers": validate_mcp_servers(raw.get("mcp_servers")),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+raw_mcp = {'github': {'command': 'npx', 'args': ['-y', '@modelcontextprotocol/server-github'], 'env': {'GITHUB_TOKEN': '${GITHUB_TOKEN}'}}}
+
+    def validate_mcp_servers(raw_mcp: list | None) -> list[dict]:
+        """校验 mcp_servers 配置段，返回清洗后的 server 配置字典列表。"""
+        if raw_mcp is None:
+            return []
+    
+        if not isinstance(raw_mcp, list):
+>           raise ConfigError("'mcp_servers' must be a list of server configs")
+E           gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs
+
+gcode/validator.py:124: ConfigError
+______________________ TestLoadConfigMCP.test_http_server ______________________
+
+self = <test_mcp.TestLoadConfigMCP object at 0x10e4946e0>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_http_server0')
+
+    def test_http_server(self, tmp_path: Path) -> None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              remote:
+                url: "https://api.example.com/mcp"
+                headers:
+                  Authorization: "Bearer ${TOKEN}"
+        """)
+>       config = load_config(path)
+                 ^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:133: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/config.py:225: in load_config
+    return _load_single_file(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+gcode/config.py:146: in _load_single_file
+    validated = validate_config_structure(raw)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gcode/validator.py:230: in validate_config_structure
+    "mcp_servers": validate_mcp_servers(raw.get("mcp_servers")),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+raw_mcp = {'remote': {'url': 'https://api.example.com/mcp', 'headers': {'Authorization': 'Bearer ${TOKEN}'}}}
+
+    def validate_mcp_servers(raw_mcp: list | None) -> list[dict]:
+        """校验 mcp_servers 配置段，返回清洗后的 server 配置字典列表。"""
+        if raw_mcp is None:
+            return []
+    
+        if not isinstance(raw_mcp, list):
+>           raise ConfigError("'mcp_servers' must be a list of server configs")
+E           gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs
+
+gcode/validator.py:124: ConfigError
+______________ TestLoadConfigMCP.test_both_command_and_url_errors ______________
+
+self = <test_mcp.TestLoadConfigMCP object at 0x10e494980>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_both_command_and_url_erro0')
+
+    def test_both_command_and_url_errors(self, tmp_path: Path) -> None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              bad:
+                command: npx
+                url: "https://example.com"
+        """)
+>       with pytest.raises(ConfigError, match="cannot have both"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'cannot have both'
+E         Actual message: "'mcp_servers' must be a list of server configs"
+
+tests/test_mcp.py:151: AssertionError
+____________ TestLoadConfigMCP.test_neither_command_nor_url_errors _____________
+
+self = <test_mcp.TestLoadConfigMCP object at 0x10e494c20>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-143/test_neither_command_nor_url_e0')
+
+    def test_neither_command_nor_url_errors(self, tmp_path: Path) -> None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              bad:
+                env:
+                  FOO: bar
+        """)
+>       with pytest.raises(ConfigError, match="must have either"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'must have either'
+E         Actual message: "'mcp_servers' must be a list of server configs"
+
+tests/test_mcp.py:166: AssertionError
+_____________________ TestMCPToolWrapper.test_name_format ______________________
+
+self = <test_mcp.TestMCPToolWrapper object at 0x10e494f50>
+
+    def test_name_format(self) -> None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import MCPToolWrapper
+        from gcode.mcp.client import MCPClient
+    
+        tool_def = mcp_types.Tool(
+            name="search_issues",
+            description="Search GitHub issues",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "query": {"type": "string"},
+                },
+                "required": ["repo"],
+            },
+        )
+        mock_client = MagicMock(spec=MCPClient)
+>       wrapper = MCPToolWrapper("github", tool_def, mock_client)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:192: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:73: in __init__
+    tool_def.name, tool_def.inputSchema
+                   ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Tool(name='search_issues', title=None, description='Search GitHub issues', input_schema={'type': 'object', 'properties...'type': 'string'}}, 'required': ['repo']}, execution=None, output_schema=None, icons=None, annotations=None, meta=None)
+item = 'inputSchema'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?
+
+../../dev/venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError
+________ TestMCPToolWrapper.test_get_schema_uses_original_input_schema _________
+
+self = <test_mcp.TestMCPToolWrapper object at 0x10e495220>
+
+    def test_get_schema_uses_original_input_schema(self) -> None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import MCPToolWrapper
+    
+        input_schema = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+            "required": ["q"],
+        }
+        tool_def = mcp_types.Tool(
+            name="search",
+            description="Search",
+            inputSchema=input_schema,
+        )
+        mock_client = MagicMock()
+>       wrapper = MCPToolWrapper("srv", tool_def, mock_client)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:73: in __init__
+    tool_def.name, tool_def.inputSchema
+                   ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Tool(name='search', title=None, description='Search', input_schema={'type': 'object', 'properties': {'q': {'type': 'string'}}, 'required': ['q']}, execution=None, output_schema=None, icons=None, annotations=None, meta=None)
+item = 'inputSchema'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?
+
+../../dev/venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError
+______________________ TestExtractText.test_image_content ______________________
+
+self = <test_mcp.TestExtractText object at 0x10e43c8f0>
+
+    def test_image_content(self) -> None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import _extract_text
+    
+        content = [mcp_types.ImageContent(type="image", data="...", mimeType="image/png")]
+>       assert "[image: image/png]" in _extract_text(content)
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:244: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:47: in _extract_text
+    parts.append(f"[image: {block.mimeType}]")
+                            ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ImageContent(type='image', data='...', mime_type='image/png', annotations=None, meta=None)
+item = 'mimeType'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'ImageContent' object has no attribute 'mimeType'. Did you mean: 'mime_type'?
+
+../../dev/venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError
+_ TestMCPManagerPartialFailure.test_single_server_failure_does_not_block_others _
+
+self = <test_mcp.TestMCPManagerPartialFailure object at 0x10e467980>
+
+    @pytest.mark.asyncio
+    async def test_single_server_failure_does_not_block_others(self) -> None:
+        from gcode.mcp.manager import MCPManager
+        from gcode.tools import ToolRegistry
+    
+        good_config = MCPServerConfig(
+            name="good",
+            command="echo",
+            args=["hello"],
+        )
+        bad_config = MCPServerConfig(
+            name="bad",
+            command="nonexistent_command_xyz_12345",
+        )
+    
+        manager = MCPManager()
+        manager.load_configs([bad_config, good_config])
+    
+        registry = ToolRegistry()
+    
+>       with patch("GCode.mcp.manager.MCPClient") as MockClient:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:271: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+______________________ TestPermissionMode.test_plan_mode _______________________
+
+self = <test_permissions.TestPermissionMode object at 0x10e4bf1d0>
+
+    def test_plan_mode(self) -> None:
+        assert mode_decide(PermissionMode.PLAN, "read") == "allow"
+>       assert mode_decide(PermissionMode.PLAN, "write") == "deny"
+E       AssertionError: assert 'ask' == 'deny'
+E         
+E         - deny
+E         + ask
+
+tests/test_permissions.py:264: AssertionError
+______________ TestPermissionChecker.test_plan_mode_denies_write _______________
+
+self = <test_permissions.TestPermissionChecker object at 0x10e4f9910>
+
+    def test_plan_mode_denies_write(self) -> None:
+        from gcode.tools.write_file import WriteFile
+        self.checker.mode = PermissionMode.PLAN
+        tool = WriteFile()
+        d = self.checker.check(tool, {"file_path": str(self.tmpdir / "x.txt"), "content": "hi"})
+>       assert d.effect == "deny"
+E       AssertionError: assert 'ask' == 'deny'
+E         
+E         - deny
+E         + ask
+
+tests/test_permissions.py:330: AssertionError
+___________________________ test_e2e_rule_allows_git ___________________________
+
+    @pytest.mark.asyncio
+    async def test_e2e_rule_allows_git():
+        """放行 git 命令的规则可以让其无需人工介入（HITL）直接通过。"""
+        tmpdir = Path(tempfile.mkdtemp())
+        rules_file = tmpdir / ".gcode" / "permissions.yaml"
+        rules_file.parent.mkdir(parents=True)
+        rules_file.write_text(yaml.dump([{"rule": "Bash(git *)", "effect": "allow"}]))
+    
+        client = MockLLMClient([
+            [
+                ToolCallComplete("t1", "Bash", {"command": "git status"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=15),
+            ],
+        ])
+        registry = create_default_registry()
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(str(tmpdir)),
+            rule_engine=RuleEngine(project_rules_path=rules_file),
+            mode=PermissionMode.DEFAULT,
+        )
+        agent = Agent(client, registry, "anthropic", work_dir=str(tmpdir), permission_checker=checker)
+        conv = ConversationManager()
+        conv.add_user_message("Show git status")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["tool_result"]) == 1
+>       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='Bash', output='STDERR:\nfatal: not a git repository (or any of the parent directories): .git\n', is_error=True, elapsed=0.015023874992039055).is_error
+
+tests/test_permissions.py:520: AssertionError
+_______________________ test_e2e_bypass_mode_allows_all ________________________
+
+    @pytest.mark.asyncio
+    async def test_e2e_bypass_mode_allows_all():
+        """Bypass 模式无需询问，放行一切操作。"""
+        tmpdir = Path(tempfile.mkdtemp())
+        test_file = tmpdir / "existing.txt"
+        test_file.write_text("original")
+    
+        client = MockLLMClient([
+            [
+                ToolCallComplete("t1", "WriteFile", {
+                    "file_path": str(test_file),
+                    "content": "modified",
+                }),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=10),
+            ],
+        ])
+        registry = create_default_registry()
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(str(tmpdir)),
+            rule_engine=RuleEngine(),
+            mode=PermissionMode.BYPASS,
+        )
+        agent = Agent(client, registry, "anthropic", work_dir=str(tmpdir), permission_checker=checker)
+        conv = ConversationManager()
+        conv.add_user_message("Modify the file")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["permission"]) == 0
+        assert len(c["tool_result"]) == 1
+>       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=0.0003023749450221658).is_error
+
+tests/test_permissions.py:603: AssertionError
+_______________________ TestModels.test_unique_team_name _______________________
+
+self = <test_teams.TestModels object at 0x10e601370>
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmppnrcsok9'
+
+    def test_unique_team_name(self, tmp_dir):
+>       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+_____________________ TestBackendDetect.test_tmux_session ______________________
+
+self = <test_teams.TestBackendDetect object at 0x10e6010a0>
+
+    def test_tmux_session(self):
+        with patch.dict(os.environ, {"TMUX": "/tmp/tmux-1234/default,12345,0"}):
+            result = detect_backend()
+>           assert result == BackendType.TMUX
+E           AssertionError: assert <BackendType.... 'in-process'> == <BackendType.TMUX: 'tmux'>
+E             
+E             - tmux
+E             + in-process
+
+tests/test_teams.py:352: AssertionError
+____________________ TestBackendDetect.test_iterm2_with_it2 ____________________
+
+self = <test_teams.TestBackendDetect object at 0x10e600d40>
+
+    def test_iterm2_with_it2(self):
+        env = {"TERM_PROGRAM": "iTerm.app"}
+        with patch.dict(os.environ, env, clear=False):
+>           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:357: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+_____________ TestBackendDetect.test_tmux_installed_not_in_session _____________
+
+self = <test_teams.TestBackendDetect object at 0x10e603200>
+
+    def test_tmux_installed_not_in_session(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+>           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:374: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+___________________ TestBackendDetect.test_no_backend_raises ___________________
+
+self = <test_teams.TestBackendDetect object at 0x10e6034d0>
+
+    def test_no_backend_raises(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+>           with patch("GCode.teams.backend_detect.shutil.which", return_value=None):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:383: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+______________________ TestTranscript.test_save_and_load _______________________
+
+self = <test_teams.TestTranscript object at 0x10e628c50>
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmp8g_9gjre'
+
+    def test_save_and_load(self, tmp_dir):
+        from gcode.conversation import ConversationManager
+        from gcode.teams.transcript import load_transcript, save_transcript
+    
+        conv = ConversationManager()
+        conv.add_user_message("Hello agent")
+        conv.add_assistant_message("Hello user")
+    
+>       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:538: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+_____________________ TestTranscript.test_load_nonexistent _____________________
+
+self = <test_teams.TestTranscript object at 0x10e628ef0>
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmp917fbsfz'
+
+    def test_load_nonexistent(self, tmp_dir):
+        from gcode.teams.transcript import load_transcript
+>       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:550: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = <function _gcd_import at 0x1048f00e0>
+
+>   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+<frozen importlib._bootstrap>:1324: ModuleNotFoundError
+______________ TestAgentCoordinatorIntegration.test_normal_prompt ______________
+
+self = <test_teams.TestAgentCoordinatorIntegration object at 0x10e628a40>
+
+    def test_normal_prompt(self):
+>       from gcode.prompts import build_system_prompt, BASE_PERSONA
+E       ImportError: cannot import name 'BASE_PERSONA' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)
+
+tests/test_teams.py:560: ImportError
+_______ TestAgentCoordinatorIntegration.test_coordinator_overrides_plan ________
+
+self = <test_teams.TestAgentCoordinatorIntegration object at 0x10e602270>
+
+    def test_coordinator_overrides_plan(self):
+>       from gcode.prompts import build_system_prompt, PLAN_MODE_INSTRUCTIONS
+E       ImportError: cannot import name 'PLAN_MODE_INSTRUCTIONS' from 'gcode.prompts' (<WORKSPACE>/work/research/gcode/gcode/prompts.py)
+
+tests/test_teams.py:572: ImportError
+=========================== short test summary info ============================
+FAILED tests/test_agent.py::test_multi_step_autonomous - AssertionError: asse...
+FAILED tests/test_agent.py::test_message_splicing - assert 4 == 5
+FAILED tests/test_agent.py::test_system_prompt_normal - AssertionError: asser...
+FAILED tests/test_commands.py::TestPlanDoHandlers::test_do_switches_back - Mo...
+FAILED tests/test_commands.py::TestRegisterAllCommands::test_all_commands_registered
+FAILED tests/test_context.py::TestBuildCompactMessages::test_basic_structure
+FAILED tests/test_context_window.py::TestAutoFetch::test_fetch_success_is_cached_and_used
+FAILED tests/test_context_window.py::TestAutoFetch::test_fetch_raises_degrades_to_mapping_table
+FAILED tests/test_context_window.py::TestAutoFetch::test_fetch_returns_none_degrades_to_default
+FAILED tests/test_context_window.py::TestAutoFetch::test_client_construction_failure_degrades
+FAILED tests/test_context_window.py::TestAutoFetch::test_non_anthropic_provider_is_not_fetched
+FAILED tests/test_context_window.py::TestAutoFetch::test_explicit_config_skips_fetch
+FAILED tests/test_context_window.py::TestAutoFetch::test_zero_or_negative_fetch_is_ignored
+FAILED tests/test_hooks.py::TestHttpExecutor::test_mock_request - ModuleNotFo...
+FAILED tests/test_interruption.py::test_close_during_model_stream_does_not_execute_incomplete_batch
+FAILED tests/test_interruption.py::test_failed_turn_can_continue_without_repeating_completed_tool[network]
+FAILED tests/test_interruption.py::test_failed_turn_can_continue_without_repeating_completed_tool[unexpected]
+FAILED tests/test_mcp.py::TestLoadConfigMCP::test_stdio_server - gcode.valida...
+FAILED tests/test_mcp.py::TestLoadConfigMCP::test_http_server - gcode.validat...
+FAILED tests/test_mcp.py::TestLoadConfigMCP::test_both_command_and_url_errors
+FAILED tests/test_mcp.py::TestLoadConfigMCP::test_neither_command_nor_url_errors
+FAILED tests/test_mcp.py::TestMCPToolWrapper::test_name_format - AttributeErr...
+FAILED tests/test_mcp.py::TestMCPToolWrapper::test_get_schema_uses_original_input_schema
+FAILED tests/test_mcp.py::TestExtractText::test_image_content - AttributeErro...
+FAILED tests/test_mcp.py::TestMCPManagerPartialFailure::test_single_server_failure_does_not_block_others
+FAILED tests/test_permissions.py::TestPermissionMode::test_plan_mode - Assert...
+FAILED tests/test_permissions.py::TestPermissionChecker::test_plan_mode_denies_write
+FAILED tests/test_permissions.py::test_e2e_rule_allows_git - AssertionError: ...
+FAILED tests/test_permissions.py::test_e2e_bypass_mode_allows_all - Assertion...
+FAILED tests/test_teams.py::TestModels::test_unique_team_name - ModuleNotFoun...
+FAILED tests/test_teams.py::TestBackendDetect::test_tmux_session - AssertionE...
+FAILED tests/test_teams.py::TestBackendDetect::test_iterm2_with_it2 - ModuleN...
+FAILED tests/test_teams.py::TestBackendDetect::test_tmux_installed_not_in_session
+FAILED tests/test_teams.py::TestBackendDetect::test_no_backend_raises - Modul...
+FAILED tests/test_teams.py::TestTranscript::test_save_and_load - ModuleNotFou...
+FAILED tests/test_teams.py::TestTranscript::test_load_nonexistent - ModuleNot...
+FAILED tests/test_teams.py::TestAgentCoordinatorIntegration::test_normal_prompt
+FAILED tests/test_teams.py::TestAgentCoordinatorIntegration::test_coordinator_overrides_plan
+ERROR tests/test_hooks.py::TestHookEngine::test_async_hook_does_not_block - F...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_create - TypeError: W...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_create_invalid_slug
+ERROR tests/test_worktree.py::TestWorktreeManager::test_create_duplicate - Ty...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_create_nested_slug - ...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_fast_recovery - TypeE...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_enter_and_session - T...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_enter_clears_cache - ...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_exit_keep - TypeError...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_exit_remove_clean - T...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_exit_remove_with_changes_blocked
+ERROR tests/test_worktree.py::TestWorktreeManager::test_list_worktrees - Type...
+ERROR tests/test_worktree.py::TestWorktreeManager::test_enter_nonexistent - T...
+ERROR tests/test_worktree.py::TestChangeDetection::test_clean_worktree - Type...
+ERROR tests/test_worktree.py::TestChangeDetection::test_uncommitted_changes
+ERROR tests/test_worktree.py::TestChangeDetection::test_new_commits - TypeErr...
+ERROR tests/test_worktree.py::TestChangeDetection::test_auto_cleanup_removes_clean
+ERROR tests/test_worktree.py::TestChangeDetection::test_auto_cleanup_keeps_dirty
+ERROR tests/test_worktree.py::TestReadWorktreeHeadSha::test_valid_worktree - ...
+38 failed, 590 passed, 19 errors in 37.81s

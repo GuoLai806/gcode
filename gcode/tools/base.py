@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from gcode.runtime.context import ToolExecutionContext
 
 SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".tox", ".mypy_cache"}
 
@@ -17,6 +20,8 @@ ToolCategory = Literal["read", "write", "command"]
 class ToolResult:
     output: str
     is_error: bool = False
+    details: dict[str, Any] | None = None
+    content: list[dict[str, Any]] | None = None
 
 
 class Tool(ABC):
@@ -32,7 +37,6 @@ class Tool(ABC):
     def is_read_only(self) -> bool:
         return self.category == "read"
 
-
     def get_schema(self) -> dict[str, Any]:
         schema = self.params_model.model_json_schema()
         schema.pop("title", None)
@@ -44,6 +48,15 @@ class Tool(ABC):
 
     @abstractmethod
     async def execute(self, params: BaseModel) -> ToolResult: ...
+
+    async def invoke(
+        self, params: BaseModel, context: ToolExecutionContext
+    ) -> ToolResult:
+        """Execute existing tools in a task-local context without changing cwd."""
+        from gcode.runtime.context import tool_context
+
+        with tool_context(context):
+            return await self.execute(params)
 
 
 # --- 流式事件 ---
@@ -96,6 +109,15 @@ class StreamEnd:
     # 计数，所以 cache_creation 在那边始终为 0。
     cache_read: int = 0
     cache_creation: int = 0
+    usage_valid: bool = True
 
 
-StreamEvent = TextDelta | ThinkingDelta | ThinkingComplete | ToolCallStart | ToolCallDelta | ToolCallComplete | StreamEnd
+StreamEvent = (
+    TextDelta
+    | ThinkingDelta
+    | ThinkingComplete
+    | ToolCallStart
+    | ToolCallDelta
+    | ToolCallComplete
+    | StreamEnd
+)

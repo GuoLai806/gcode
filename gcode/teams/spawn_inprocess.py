@@ -27,7 +27,6 @@ class InProcessTeammateHandle:
         self.name = name
         self.progress = progress
 
-
     @property
     def done(self) -> bool:
         return self.task.done()
@@ -40,7 +39,6 @@ class InProcessTeammateHandle:
             except (asyncio.CancelledError, Exception):
                 return None
         return None
-
 
     def cancel(self) -> None:
         if not self.task.done():
@@ -88,13 +86,28 @@ def spawn_inprocess_teammate(
         try:
             if conversation is not None:
                 result = await agent.run_to_completion(
-                    "", conversation, event_callback=_on_event,
+                    "",
+                    conversation,
+                    event_callback=_on_event,
                 )
             else:
                 result = await agent.run_to_completion(
-                    prompt, event_callback=_on_event,
+                    prompt,
+                    event_callback=_on_event,
                 )
-            progress.status = "completed"
+            reason = getattr(agent, "last_stop_reason", "completed")
+            progress.status = (
+                reason
+                if reason
+                in (
+                    "completed",
+                    "limit_reached",
+                    "budget_exhausted",
+                    "failed",
+                    "cancelled",
+                )
+                else "completed"
+            )
             return result
         except asyncio.CancelledError:
             progress.status = "stopped"

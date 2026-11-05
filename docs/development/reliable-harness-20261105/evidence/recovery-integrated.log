@@ -1,0 +1,38 @@
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:300: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+....F....................................                                [100%]
+=================================== FAILURES ===================================
+____ test_literal_constraint_survives_three_compactions_and_disk_roundtrip _____
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-201/test_literal_constraint_surviv0')
+
+    @pytest.mark.asyncio
+    async def test_literal_constraint_survives_three_compactions_and_disk_roundtrip(tmp_path):
+        from gcode.memory.session import make_compact_boundary, records_to_messages
+        conv = long_conversation()
+        literal = "不要删除原始数据；只允许创建新版本。"
+        conv.history.insert(0, Message("user", literal, origin="user"))
+        for _ in range(3):
+            result = await auto_compact(conv, SummaryClient("<summary>All good.</summary>", "end_turn"),
+                                        50000, tmp_path, manual=True)
+            assert isinstance(result, CompactEvent)
+            record = make_compact_boundary(result.boundary.summary, result.boundary.keep,
+                                            result.boundary.preserved_constraints,
+                                            result.boundary.notification_ids)
+            restored = records_to_messages([record])
+            assert any(literal in message.content for message in restored)
+            assert literal in restored[0].preserved_constraints
+            conv = ConversationManager(history=restored)
+            conv.history += [Message("user", "later " + "后续" * 2500),
+                             Message("assistant", "work " * 2000)] * 8
+>       assert not (tmp_path / "compact-checkpoints.jsonl").exists()
+E       AssertionError: assert not True
+E        +  where True = exists()
+E        +    where exists = (PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-201/test_literal_constraint_surviv0') / 'compact-checkpoints.jsonl').exists
+
+tests/test_checkpoint_integrity.py:59: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_checkpoint_integrity.py::test_literal_constraint_survives_three_compactions_and_disk_roundtrip
+1 failed, 40 passed in 1.57s

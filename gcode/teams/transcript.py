@@ -4,13 +4,24 @@ import json
 from pathlib import Path
 from typing import Any
 
-from gcode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
+from gcode.conversation import (
+    ConversationManager,
+    Message,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 
 def _serialize_conversation(conv: ConversationManager) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     for msg in conv.history:
-        entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
+        entry: dict[str, Any] = {
+            "role": msg.role,
+            "content": msg.content,
+            "origin": msg.origin,
+            "preserved_constraints": msg.preserved_constraints,
+            "notification_ids": msg.notification_ids,
+        }
         if msg.tool_uses:
             entry["tool_uses"] = [
                 {
@@ -26,6 +37,8 @@ def _serialize_conversation(conv: ConversationManager) -> list[dict[str, Any]]:
                     "tool_use_id": tr.tool_use_id,
                     "content": tr.content,
                     "is_error": tr.is_error,
+                    "details": tr.details,
+                    "content_blocks": tr.content_blocks,
                 }
                 for tr in msg.tool_results
             ]
@@ -49,12 +62,17 @@ def _deserialize_conversation(data: list[dict[str, Any]]) -> ConversationManager
                 tool_use_id=tr["tool_use_id"],
                 content=tr["content"],
                 is_error=tr.get("is_error", False),
+                details=tr.get("details"),
+                content_blocks=tr.get("content_blocks"),
             )
             for tr in entry.get("tool_results", [])
         ]
         msg = Message(
             role=entry["role"],
             content=entry.get("content", ""),
+            origin=entry.get("origin", ""),
+            preserved_constraints=entry.get("preserved_constraints", []),
+            notification_ids=entry.get("notification_ids", []),
             tool_uses=tool_uses,
             tool_results=tool_results,
         )

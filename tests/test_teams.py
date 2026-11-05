@@ -23,7 +23,11 @@ from gcode.teams.models import (
 from gcode.teams.shared_task import SharedTask, SharedTaskStore
 from gcode.teams.mailbox import Mailbox, MailboxMessage, create_message
 from gcode.teams.registry import AgentNameRegistry
-from gcode.teams.backend_detect import BackendDetectionError, detect_backend
+from gcode.teams.backend_detect import (
+    BackendDetectionError,
+    detect_backend,
+    detect_pane_backend,
+)
 from gcode.teams.coordinator import (
     get_coordinator_system_prompt,
     get_coordinator_user_context,
@@ -44,6 +48,7 @@ from gcode.tools.base import Tool, ToolResult
 # 辅助工具
 # =====================================================================
 
+
 class DummyTool(Tool):
     params_model = MagicMock
 
@@ -60,11 +65,13 @@ class DummyTool(Tool):
     async def execute(self, params):
         return ToolResult(output=f"{self.name} executed")
 
+
 def make_registry(*tool_names: str) -> ToolRegistry:
     reg = ToolRegistry()
     for name in tool_names:
         reg.register(DummyTool(name))
     return reg
+
 
 @pytest.fixture(autouse=True)
 def _reset_registry():
@@ -72,15 +79,18 @@ def _reset_registry():
     yield
     AgentNameRegistry.reset()
 
+
 @pytest.fixture
 def tmp_dir():
     d = tempfile.mkdtemp()
     yield d
     shutil.rmtree(d, ignore_errors=True)
 
+
 # =====================================================================
 # 1. AgentTeam / TeammateInfo
 # =====================================================================
+
 
 class TestModels:
     def test_teammate_info_roundtrip(self):
@@ -107,10 +117,16 @@ class TestModels:
             config_path=config_path,
             description="Test team",
         )
-        team.add_member(TeammateInfo(
-            name="alice", agent_id="a1", agent_type="worker",
-            model="sonnet", worktree_path="/tmp/wt1", backend_type="tmux",
-        ))
+        team.add_member(
+            TeammateInfo(
+                name="alice",
+                agent_id="a1",
+                agent_type="worker",
+                model="sonnet",
+                worktree_path="/tmp/wt1",
+                backend_type="tmux",
+            )
+        )
         team.save()
 
         loaded = AgentTeam.load(config_path)
@@ -121,66 +137,100 @@ class TestModels:
 
     def test_get_member(self):
         team = AgentTeam(name="t", lead_agent_id="l")
-        team.add_member(TeammateInfo(
-            name="bob", agent_id="b1", agent_type="w",
-            model="", worktree_path="", backend_type="in-process",
-        ))
+        team.add_member(
+            TeammateInfo(
+                name="bob",
+                agent_id="b1",
+                agent_type="w",
+                model="",
+                worktree_path="",
+                backend_type="in-process",
+            )
+        )
         assert team.get_member("bob") is not None
         assert team.get_member("b1") is not None
         assert team.get_member("nonexistent") is None
 
     def test_remove_member(self):
         team = AgentTeam(name="t", lead_agent_id="l")
-        team.add_member(TeammateInfo(
-            name="bob", agent_id="b1", agent_type="w",
-            model="", worktree_path="", backend_type="in-process",
-        ))
+        team.add_member(
+            TeammateInfo(
+                name="bob",
+                agent_id="b1",
+                agent_type="w",
+                model="",
+                worktree_path="",
+                backend_type="in-process",
+            )
+        )
         assert team.remove_member("bob") is True
         assert len(team.members) == 0
         assert team.remove_member("bob") is False
 
     def test_set_member_active(self):
         team = AgentTeam(name="t", lead_agent_id="l")
-        team.add_member(TeammateInfo(
-            name="alice", agent_id="a1", agent_type="w",
-            model="", worktree_path="", backend_type="in-process",
-            is_active=True,
-        ))
+        team.add_member(
+            TeammateInfo(
+                name="alice",
+                agent_id="a1",
+                agent_type="w",
+                model="",
+                worktree_path="",
+                backend_type="in-process",
+                is_active=True,
+            )
+        )
         team.set_member_active("alice", False)
         assert team.members[0].is_active is False
         assert team.all_idle() is True
 
     def test_all_idle(self):
         team = AgentTeam(name="t", lead_agent_id="l")
-        team.add_member(TeammateInfo(
-            name="alice", agent_id="a1", agent_type="w",
-            model="", worktree_path="", backend_type="in-process",
-            is_active=False,
-        ))
-        team.add_member(TeammateInfo(
-            name="bob", agent_id="b1", agent_type="w",
-            model="", worktree_path="", backend_type="in-process",
-            is_active=True,
-        ))
+        team.add_member(
+            TeammateInfo(
+                name="alice",
+                agent_id="a1",
+                agent_type="w",
+                model="",
+                worktree_path="",
+                backend_type="in-process",
+                is_active=False,
+            )
+        )
+        team.add_member(
+            TeammateInfo(
+                name="bob",
+                agent_id="b1",
+                agent_type="w",
+                model="",
+                worktree_path="",
+                backend_type="in-process",
+                is_active=True,
+            )
+        )
         assert team.all_idle() is False
 
     def test_unique_team_name(self, tmp_dir):
-        with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+        with patch("gcode.teams.models.Path.home", return_value=Path(tmp_dir)):
             name1 = unique_team_name("my-team")
             assert name1 == "my-team"
             (Path(tmp_dir) / ".gcode" / "teams" / "my-team").mkdir(parents=True)
             name2 = unique_team_name("my-team")
             assert name2 == "my-team-2"
 
+
 # =====================================================================
 # 2. SharedTaskStore
 # =====================================================================
+
 
 class TestSharedTaskStore:
     def test_create_and_get(self, tmp_dir):
         store = SharedTaskStore(Path(tmp_dir) / "tasks.json")
         store.init_empty()
-        task = store.create(title="Do something", description="Details", assignee="alice")
+        task = store.create(
+            title="Do something", description="Details", assignee="alice"
+        )
         assert task.id == "1"
         assert task.title == "Do something"
 
@@ -242,9 +292,11 @@ class TestSharedTaskStore:
         assert len(tasks) == 1
         assert tasks[0].title == "Persisted task"
 
+
 # =====================================================================
 # 3. Mailbox
 # =====================================================================
+
 
 class TestMailbox:
     def test_write_and_consume(self, tmp_dir):
@@ -257,9 +309,12 @@ class TestMailbox:
         assert messages[0].content == "Hello bob"
         assert messages[0].from_agent == "alice"
 
-        # 已被消费 —— 此时应该为空
-        messages2 = mailbox.consume("bob-agent-id")
-        assert len(messages2) == 0
+        # Reading is not durable delivery; explicitly claim and acknowledge.
+        assert len(mailbox.consume("bob-agent-id")) == 1
+        claimed = mailbox.claim("bob-agent-id", "consumer")
+        assert [m.id for m in claimed] == [msg.id]
+        assert mailbox.ack("bob-agent-id", msg.id, "consumer")
+        assert mailbox.consume("bob-agent-id") == []
 
     def test_read_without_consume(self, tmp_dir):
         mailbox = Mailbox(tmp_dir)
@@ -291,19 +346,21 @@ class TestMailbox:
         msg = create_message("a", "b", "test")
         mailbox.write("agent-1", msg)
         mailbox.cleanup("agent-1")
-        assert len(mailbox.read("agent-1")) == 0
+        # Cleanup must preserve unacknowledged messages for recovery.
+        assert len(mailbox.read("agent-1")) == 1
 
     def test_empty_mailbox(self, tmp_dir):
         mailbox = Mailbox(tmp_dir)
         assert mailbox.consume("nonexistent") == []
         assert mailbox.read("nonexistent") == []
 
+
 # =====================================================================
 # 4. AgentNameRegistry
 # =====================================================================
 
-class TestAgentNameRegistry:
 
+class TestAgentNameRegistry:
     def test_register_and_resolve(self):
         reg = AgentNameRegistry.instance()
         reg.register("alice", "agent-abc")
@@ -329,9 +386,11 @@ class TestAgentNameRegistry:
         r2 = AgentNameRegistry.instance()
         assert r1 is r2
 
+
 # =====================================================================
 # 5. Backend Detection（后端探测）
 # =====================================================================
+
 
 class TestBackendDetect:
     def test_in_process_mode(self):
@@ -343,46 +402,49 @@ class TestBackendDetect:
         assert result == BackendType.IN_PROCESS
 
     def test_tmux_session(self):
-        with patch.dict(os.environ, {"TMUX": "/tmp/tmux-1234/default,12345,0"}):
-            result = detect_backend()
-            assert result == BackendType.TMUX
+        with patch.dict(
+            os.environ, {"TMUX": "/tmp/tmux-1234/default,12345,0"}, clear=True
+        ):
+            assert detect_backend() == BackendType.IN_PROCESS
+            assert detect_pane_backend() == BackendType.TMUX
 
     def test_iterm2_with_it2(self):
-        env = {"TERM_PROGRAM": "iTerm.app"}
-        with patch.dict(os.environ, env, clear=False):
-            with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
-                def which_side_effect(cmd):
-                    if cmd == "it2":
-                        return "/usr/local/bin/it2"
-                    if cmd == "tmux":
-                        return None
-                    return None
-                mock_which.side_effect = which_side_effect
-                with patch.dict(os.environ, {"TMUX": ""}, clear=False):
-                    os.environ.pop("TMUX", None)
-                    result = detect_backend()
-                    assert result == BackendType.ITERM2
+        with patch.dict(os.environ, {"TERM_PROGRAM": "iTerm.app"}, clear=True):
+            with patch("gcode.teams.backend_detect.shutil.which") as which:
+                which.side_effect = lambda cmd: (
+                    "/usr/local/bin/it2" if cmd == "it2" else None
+                )
+                assert detect_backend() == BackendType.IN_PROCESS
+                assert detect_pane_backend() == BackendType.ITERM2
 
     def test_tmux_installed_not_in_session(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("TMUX", None)
-            os.environ.pop("TERM_PROGRAM", None)
-            with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
-                mock_which.return_value = "/usr/bin/tmux"
-                result = detect_backend()
-                assert result == BackendType.TMUX
+        with patch.dict(os.environ, {}, clear=True):
+            with patch(
+                "gcode.teams.backend_detect.shutil.which", return_value="/usr/bin/tmux"
+            ):
+                assert detect_backend() == BackendType.IN_PROCESS
+                assert detect_pane_backend() == BackendType.TMUX
 
     def test_no_backend_raises(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("TMUX", None)
-            os.environ.pop("TERM_PROGRAM", None)
-            with patch("GCode.teams.backend_detect.shutil.which", return_value=None):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("gcode.teams.backend_detect.shutil.which", return_value=None):
+                assert detect_backend() == BackendType.IN_PROCESS
                 with pytest.raises(BackendDetectionError):
-                    detect_backend()
+                    detect_pane_backend()
+
+    def test_pane_backend_respects_noninteractive_and_inprocess(self):
+        with patch.dict(os.environ, {"TMUX": "active"}, clear=True):
+            assert detect_pane_backend(is_interactive=False) == BackendType.IN_PROCESS
+            assert (
+                detect_pane_backend(teammate_mode="in-process")
+                == BackendType.IN_PROCESS
+            )
+
 
 # =====================================================================
 # 6. Tool Filtering（工具过滤）
 # =====================================================================
+
 
 class TestToolFilter:
     def test_teammate_coordination_tools_in_allowed(self):
@@ -400,8 +462,15 @@ class TestToolFilter:
 
     def test_apply_coordinator_filter(self):
         reg = make_registry(
-            "Agent", "ReadFile", "WriteFile", "Bash", "SendMessage",
-            "TaskStop", "SyntheticOutput", "TeamCreate", "TeamDelete",
+            "Agent",
+            "ReadFile",
+            "WriteFile",
+            "Bash",
+            "SendMessage",
+            "TaskStop",
+            "SyntheticOutput",
+            "TeamCreate",
+            "TeamDelete",
         )
         filtered = apply_coordinator_filter(reg)
         names = {t.name for t in filtered.list_tools()}
@@ -411,9 +480,11 @@ class TestToolFilter:
         assert "ReadFile" not in names
         assert "Bash" not in names
 
+
 # =====================================================================
 # 7. Coordinator Mode（协调者模式）
 # =====================================================================
+
 
 class TestCoordinatorMode:
     def test_disabled_by_default(self):
@@ -476,19 +547,23 @@ class TestCoordinatorMode:
         assert "workerToolsContext" in ctx
         assert "Workers" in ctx["workerToolsContext"]
 
+
 # =====================================================================
 # 8. Config Extensions（配置项扩展）
 # =====================================================================
 
+
 class TestConfigExtensions:
     def test_teammate_mode_defaults(self):
         from gcode.config import AppConfig
+
         cfg = AppConfig(providers=[])
         assert cfg.teammate_mode == ""
         assert cfg.enable_coordinator_mode is False
 
     def test_load_config_with_team_fields(self, tmp_dir):
         from gcode.config import load_config
+
         config_path = Path(tmp_dir) / "config.yaml"
         config_path.write_text(
             "providers:\n"
@@ -505,6 +580,7 @@ class TestConfigExtensions:
 
     def test_invalid_teammate_mode(self, tmp_dir):
         from gcode.config import ConfigError, load_config
+
         config_path = Path(tmp_dir) / "config.yaml"
         config_path.write_text(
             "providers:\n"
@@ -517,12 +593,13 @@ class TestConfigExtensions:
         with pytest.raises(ConfigError):
             load_config(config_path)
 
+
 # =====================================================================
 # 9. Transcript Persistence（会话记录持久化）
 # =====================================================================
 
-class TestTranscript:
 
+class TestTranscript:
     def test_save_and_load(self, tmp_dir):
         from gcode.conversation import ConversationManager
         from gcode.teams.transcript import load_transcript, save_transcript
@@ -531,7 +608,7 @@ class TestTranscript:
         conv.add_user_message("Hello agent")
         conv.add_assistant_message("Hello user")
 
-        with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+        with patch("gcode.teams.models.Path.home", return_value=Path(tmp_dir)):
             save_transcript("test-team", "agent-001", conv)
             restored = load_transcript("test-team", "agent-001")
 
@@ -543,29 +620,43 @@ class TestTranscript:
 
     def test_load_nonexistent(self, tmp_dir):
         from gcode.teams.transcript import load_transcript
-        with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+
+        with patch("gcode.teams.models.Path.home", return_value=Path(tmp_dir)):
             result = load_transcript("no-team", "no-agent")
         assert result is None
+
 
 # =====================================================================
 # 10. Agent build_system_prompt 集成测试
 # =====================================================================
 
+
 class TestAgentCoordinatorIntegration:
     def test_normal_prompt(self):
-        from gcode.prompts import build_system_prompt, BASE_PERSONA
+        from gcode.prompts import build_system_prompt, IDENTITY_SECTION
+
         prompt = build_system_prompt()
-        assert BASE_PERSONA in prompt
+        assert IDENTITY_SECTION.content in prompt
 
     def test_coordinator_prompt(self):
         from gcode.prompts import build_system_prompt
+
         prompt = build_system_prompt(coordinator_mode=True)
         assert "coordinator" in prompt.lower()
         assert "Research" in prompt
         assert "Synthesis" in prompt
 
     def test_coordinator_overrides_plan(self):
-        from gcode.prompts import build_system_prompt, PLAN_MODE_INSTRUCTIONS
-        prompt = build_system_prompt(plan_mode=True, coordinator_mode=True)
-        assert PLAN_MODE_INSTRUCTIONS not in prompt
+        from gcode.prompts import build_plan_mode_reminder, build_system_prompt
+
+        reminder = build_plan_mode_reminder("/tmp/plan.md", False, 1)
+        prompt = build_system_prompt(
+            coordinator_mode=True, custom_instructions="UNIQUE-PROJECT-MARKER"
+        )
+        assert "plan mode is active" in reminder.lower()
+        assert "plan mode is active" not in prompt.lower()
+        assert "UNIQUE-PROJECT-MARKER" not in prompt
+        assert "UNIQUE-PROJECT-MARKER" in build_system_prompt(
+            custom_instructions="UNIQUE-PROJECT-MARKER"
+        )
         assert "coordinator" in prompt.lower()

@@ -36,12 +36,10 @@ class Hook:
     async_exec: bool = False
     executed: bool = False
 
-
     def should_run(self) -> bool:
         if self.once and self.executed:
             return False
         return True
-
 
     def mark_executed(self) -> None:
         self.executed = True
@@ -55,6 +53,8 @@ class HookContext:
     file_path: str = ""
     message: str = ""
     error: str = ""
+    cwd: str = ""
+    run_id: str = ""
 
     def get_field(self, name: str) -> str:
         if name == "tool":

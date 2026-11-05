@@ -14,43 +14,38 @@ _DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-_SAFE_COMMANDS = frozenset({
-    "ls", "dir", "pwd", "echo", "cat", "head", "tail", "wc",
-    "find", "which", "whereis", "whoami", "hostname", "uname",
-    "date", "cal", "uptime", "df", "du", "free", "env", "printenv",
-    "file", "stat", "readlink", "realpath", "basename", "dirname",
-    "sort", "uniq", "tr", "cut", "awk", "sed", "grep", "egrep", "fgrep",
-    "diff", "comm", "tee", "xargs", "true", "false", "test",
-    "git status", "git log", "git diff", "git show", "git branch",
-    "git tag", "git remote", "git rev-parse", "git ls-files",
-    "git blame", "git stash list", "go version", "go env",
-    "node -v", "npm -v", "npx", "python --version", "pip list",
-    "cargo --version", "rustc --version", "java -version", "java --version",
-})
+# Only exact commands with no user-supplied program/flags are automatic.
+# Interpreters, find -exec, sed -i, tee, xargs, npx and Git's extensible
+# helpers cannot be classified as read-only by matching a command prefix.
+_SAFE_COMMANDS = frozenset(
+    {
+        "ls",
+        "pwd",
+        "whoami",
+        "uname",
+        "uname -a",
+        "date",
+        "uptime",
+        "df",
+        "du",
+        "true",
+        "false",
+    }
+)
 
 
 def is_safe_command(command: str) -> bool:
-    trimmed = command.strip()
-    if not trimmed:
-        return False
-    for ch in ("|", ";", "&&", ">", "$(", "`"):
-        if ch in trimmed:
-            return False
-    for safe in _SAFE_COMMANDS:
-        if trimmed == safe or trimmed.startswith(safe + " "):
-            return True
-    return False
+    return command.strip() in _SAFE_COMMANDS and not any(
+        ch in command for ch in ("\n", "\r", "\x00")
+    )
 
 
 class DangerousCommandDetector:
-
-
     def __init__(self, extra_patterns: list[tuple[str, str]] | None = None) -> None:
         self._patterns = list(_DANGEROUS_PATTERNS)
         if extra_patterns:
             for regex_str, reason in extra_patterns:
                 self._patterns.append((re.compile(regex_str), reason))
-
 
     def detect(self, command: str) -> tuple[bool, str]:
         for pattern, reason in self._patterns:

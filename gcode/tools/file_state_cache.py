@@ -1,53 +1,69 @@
 from __future__ import annotations
-
+import threading
 from pathlib import Path
+from gcode.cache import read_stable
+from gcode.runtime.context import current_tool_context
 
 
 class FileStateCache:
-    """Tracks which files have been read, enforcing read-before-edit.
-
-    Stores { absolute_path: (content, mtime_ns) } after each ReadFile call.
-    EditFile and WriteFile check the cache before proceeding:
-      - Gate 1: file must have been read (present in cache).
-      - Gate 2: file must not have been modified since the read (mtime_ns matches).
-    """
+    """Read-before-write snapshots are isolated by run and verified by content."""
 
     def __init__(self) -> None:
-        self._cache: dict[str, tuple[str, int]] = {}
+        self._cache: dict[tuple[bool, str, str], tuple[int, str]] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(path):
+        context = current_tool_context()
+        return (
+            context is None,
+            context.run_id if context else "",
+            str(Path(path).resolve()),
+        )
+
+    def record_snapshot(
+        self, path: str, content: str, mtime_ns: int, raw_hash: str
+    ) -> None:
+        with self._lock:
+            self._cache[self._key(path)] = (mtime_ns, raw_hash)
 
     def record(self, path: str, content: str, mtime_ns: int) -> None:
-        """Record a file's content and mtime after a successful read."""
-        self._cache[path] = (content, mtime_ns)
+        # Legacy caller: obtain and verify the bytes before authorizing edits.
+        try:
+            text, current, raw_hash = read_stable(path)
+            if text != content or current.st_mtime_ns != mtime_ns:
+                raise OSError("snapshot changed")
+            self.record_snapshot(path, content, mtime_ns, raw_hash)
+        except (OSError, UnicodeError):
+            with self._lock:
+                self._cache.pop(self._key(path), None)
 
     def check(self, path: str) -> tuple[bool, str]:
-        """Check whether the file is safe to edit/write.
-
-        Returns (ok, error_message). If ok is True, error_message is empty.
-        """
-        entry = self._cache.get(path)
+        with self._lock:
+            entry = self._cache.get(self._key(path))
         if entry is None:
-            return False, "Error: file has not been read yet. Read it first before editing."
-
-        _, cached_mtime_ns = entry
+            return (
+                False,
+                "Error: file has not been read yet. Read it first before editing.",
+            )
         try:
-            current_mtime_ns = Path(path).stat().st_mtime_ns
-        except OSError:
-            # File may have been deleted; allow the write to proceed
-            # (WriteFile will create it, EditFile will fail on its own).
-            return True, ""
-
-        if current_mtime_ns != cached_mtime_ns:
-            return False, "Error: file has been modified since last read. Read it again before editing."
-
+            _, current, raw_hash = read_stable(path)
+        except (OSError, UnicodeError):
+            return (
+                False,
+                "Error: file is missing or changed while checking. Read it again before editing.",
+            )
+        if current.st_mtime_ns != entry[0] or raw_hash != entry[1]:
+            return (
+                False,
+                "Error: file has been modified since last read. Read it again before editing.",
+            )
         return True, ""
 
     def update(self, path: str) -> None:
-        """Update the cache entry after a successful edit/write."""
         try:
-            p = Path(path)
-            content = p.read_text(encoding="utf-8")
-            mtime_ns = p.stat().st_mtime_ns
-            self._cache[path] = (content, mtime_ns)
-        except OSError:
-            # If we can't read it back, just remove the stale entry.
-            self._cache.pop(path, None)
+            content, current, raw_hash = read_stable(path)
+            self.record_snapshot(path, content, current.st_mtime_ns, raw_hash)
+        except (OSError, UnicodeError):
+            with self._lock:
+                self._cache.pop(self._key(path), None)

@@ -1,0 +1,1712 @@
+.............................................FFFF.F...............FFF... [ 98%]
+.                                                                        [100%]
+=================================== FAILURES ===================================
+_________ TestAutoCompactKeepRecent.test_recent_messages_kept_verbatim _________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x10aca3b90>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_recent_messages_kept_verb0')
+
+    async def test_recent_messages_kept_verbatim(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        # 快照记录保留窗口选中了哪些尾部消息，让断言跟随算法本身，
+        # 而不是依赖写死的数量。
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        assert kept_before, "fixture should keep a non-empty tail"
+    
+        client = _SummaryClient()
+        # 钉一个很高的锚点，使自动压缩阈值被触发。
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+>       result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+
+tests/test_context.py:634: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22)
+client = <test_context._SummaryClient object at 0x10dd43260>
+context_window = 200000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_recent_messages_kept_verb0')
+protocol = 'anthropic', manual = False, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+__________ TestAutoCompactKeepRecent.test_summary_only_covers_prefix ___________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x10aca06e0>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_summary_only_covers_prefi0')
+
+    async def test_summary_only_covers_prefix(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_contents = {m.content for m in conv.history[keep_start:]}
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+>       await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+
+tests/test_context.py:661: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22)
+client = <test_context._SummaryClient object at 0x10dd78a40>
+context_window = 200000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_summary_only_covers_prefi0')
+protocol = 'anthropic', manual = False, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+______________ TestAutoCompactKeepRecent.test_tool_pair_not_split ______________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x10ac6f590>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_tool_pair_not_split0')
+
+    async def test_tool_pair_not_split(self, tmp_path: Path) -> None:
+        conv = ConversationManager()
+        for i in range(8):
+            conv.history.append(_user(3000))
+            conv.history.append(_assistant(3000))
+        # 最近的尾部以一对 tool_use/tool_result 结尾。
+        conv.history.append(
+            Message(
+                role="assistant",
+                content="calling",
+                tool_uses=[ToolUseBlock("tk", "Grep", {})],
+            )
+        )
+        conv.history.append(
+            Message(
+                role="user",
+                content="",
+                tool_results=[ToolResultBlock("tk", "RESULT_DATA")],
+            )
+        )
+        conv.record_usage_anchor(input_tokens=200_000)
+        client = _SummaryClient()
+    
+>       await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+
+tests/test_context.py:697: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=18)
+client = <test_context._SummaryClient object at 0x10dd43a10>
+context_window = 200000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_tool_pair_not_split0')
+protocol = 'anthropic', manual = False, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+__________ TestAutoCompactKeepRecent.test_anchor_reset_after_compact ___________
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x10acdd040>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_anchor_reset_after_compac0')
+
+    async def test_anchor_reset_after_compact(self, tmp_path: Path) -> None:
+        conv = _make_long_conversation()
+        conv.record_usage_anchor(input_tokens=200_000)
+        assert conv.baseline_tokens > 0 and conv.anchor_count > 0
+        client = _SummaryClient()
+    
+>       await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+
+tests/test_context.py:715: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22)
+client = <test_context._SummaryClient object at 0x10dd7a1b0>
+context_window = 200000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_anchor_reset_after_compac0')
+protocol = 'anthropic', manual = False, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+____ TestAutoCompactKeepRecent.test_event_carries_boundary_summary_and_keep ____
+
+self = <test_context.TestAutoCompactKeepRecent object at 0x10acdd400>
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_event_carries_boundary_su0')
+
+    async def test_event_carries_boundary_summary_and_keep(
+        self, tmp_path: Path
+    ) -> None:
+        # 返回的 CompactEvent 必须把一个结构化的 boundary（摘要 + 精确逐字
+        # 保留的尾部）交给会话层，使其能持久化一条 compact_boundary 记录。
+        conv = _make_long_conversation()
+        keep_start = _compute_keep_start_index(conv.history)
+        kept_before = list(conv.history[keep_start:])
+        client = _SummaryClient()
+        conv.record_usage_anchor(input_tokens=200_000)
+    
+>       result = await auto_compact(
+            conv,
+            client,
+            context_window=200_000,
+            session_dir=tmp_path,
+        )
+
+tests/test_context.py:760: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu...on_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=200000, baseline_tokens=200000, anchor_count=22)
+client = <test_context._SummaryClient object at 0x10dedc6b0>
+context_window = 200000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_event_carries_boundary_su0')
+protocol = 'anthropic', manual = False, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+____ test_literal_constraint_survives_three_compactions_and_disk_roundtrip _____
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_literal_constraint_surviv0')
+
+    @pytest.mark.asyncio
+    async def test_literal_constraint_survives_three_compactions_and_disk_roundtrip(
+        tmp_path,
+    ):
+        from gcode.memory.session import make_compact_boundary, records_to_messages
+    
+        conv = long_conversation()
+        literal = "不要删除原始数据；只允许创建新版本。"
+        conv.history.insert(0, Message("user", literal, origin="user"))
+        for _ in range(3):
+>           result = await auto_compact(
+                conv,
+                SummaryClient(
+                    "<summary>All good.\n1. 主要请求和意图：测试任务\n2. 关键技术概念：无\n3. 文件和代码段：无\n4. 错误和修复：无\n5. 问题解决过程：无\n6. 所有用户消息：原文由运行时另行保存\n7. 待办任务：无\n8. 当前工作：测试压缩\n9. 可能的下一步：无</summary>",
+                    "end_turn",
+                ),
+                50000,
+                tmp_path,
+                manual=True,
+            )
+
+tests/test_checkpoint_integrity.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='不要删除原始数据；只允许创建新版本。', tool_uses=[], tool_results=[], thinkin... notification_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=0, baseline_tokens=0, anchor_count=0)
+client = <test_checkpoint_integrity.SummaryClient object at 0x10df3c5f0>
+context_window = 50000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_literal_constraint_surviv0')
+protocol = 'anthropic', manual = True, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+_________ test_compact_retains_artifact_and_commits_before_projection __________
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_compact_retains_artifact_0')
+
+    @pytest.mark.asyncio
+    async def test_compact_retains_artifact_and_commits_before_projection(tmp_path):
+        conv = long_conversation()
+        artifact = tmp_path / "call.txt"
+        artifact.write_text("original evidence")
+        conv.history.extend(
+            [
+                Message("assistant", "", tool_uses=[ToolUseBlock("call", "ReadFile", {})]),
+                Message(
+                    "user",
+                    "",
+                    tool_results=[
+                        ToolResultBlock(
+                            "call", f"<persisted-output>{artifact}</persisted-output>"
+                        )
+                    ],
+                ),
+            ]
+        )
+>       result = await auto_compact(
+            conv,
+            SummaryClient(
+                "<summary>constraints retained\n1. 主要请求和意图：测试任务\n2. 关键技术概念：无\n3. 文件和代码段：无\n4. 错误和修复：无\n5. 问题解决过程：无\n6. 所有用户消息：原文由运行时另行保存\n7. 待办任务：无\n8. 当前工作：测试压缩\n9. 可能的下一步：无</summary>",
+                "end_turn",
+            ),
+            50000,
+            tmp_path,
+            manual=True,
+        )
+
+tests/test_checkpoint_integrity.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='constraint 0: 内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内... notification_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=0, baseline_tokens=0, anchor_count=0)
+client = <test_checkpoint_integrity.SummaryClient object at 0x10df3dbe0>
+context_window = 50000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_compact_retains_artifact_0')
+protocol = 'anthropic', manual = True, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+___________ test_checkpoint_write_failure_preserves_original_history ___________
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_checkpoint_write_failure_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10deddaf0>
+
+    @pytest.mark.asyncio
+    async def test_checkpoint_write_failure_preserves_original_history(
+        tmp_path, monkeypatch
+    ):
+        conv = long_conversation()
+        before = list(conv.history)
+        monkeypatch.setattr(
+            "gcode.context.manager.os.fsync", MagicMock(side_effect=OSError("disk full"))
+        )
+>       result = await auto_compact(
+            conv,
+            SummaryClient(
+                "<summary>valid summary\n1. 主要请求和意图：测试任务\n2. 关键技术概念：无\n3. 文件和代码段：无\n4. 错误和修复：无\n5. 问题解决过程：无\n6. 所有用户消息：原文由运行时另行保存\n7. 待办任务：无\n8. 当前工作：测试压缩\n9. 可能的下一步：无</summary>",
+                "end_turn",
+            ),
+            50000,
+            tmp_path,
+            manual=True,
+        )
+
+tests/test_checkpoint_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+conversation = ConversationManager(history=[Message(role='user', content='constraint 0: 内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内... notification_ids=[])], env_injected=False, ltm_injected=False, last_input_tokens=0, baseline_tokens=0, anchor_count=0)
+client = <test_checkpoint_integrity.SummaryClient object at 0x10dd7b230>
+context_window = 50000
+session_dir = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-291/test_checkpoint_write_failure_0')
+protocol = 'anthropic', manual = True, breaker = None, recovery = None
+tool_schemas = None, transcript_path = '', usage_recorder = None
+usage_unknown_recorder = None
+
+    async def auto_compact(
+        conversation: ConversationManager,
+        client: Any,
+        context_window: int,
+        session_dir: Path,
+        protocol: str = "anthropic",
+        manual: bool = False,
+        breaker: CompactCircuitBreaker | None = None,
+        recovery: RecoveryState | None = None,
+        tool_schemas: list[Mapping[str, Any]] | None = None,
+        transcript_path: str = "",
+        usage_recorder: Callable[[int, int, int, int], None] | None = None,
+        usage_unknown_recorder: Callable[[], None] | None = None,
+    ) -> CompactEvent | str | None:
+        threshold = compute_compact_threshold(
+            context_window,
+            manual=manual,
+            output_reserve=getattr(client, "max_output_tokens", None),
+        )
+        if threshold <= 0:
+            return "模型输出预算无法放入当前上下文窗口；原历史已保留"
+    
+        # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
+        # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
+        # 字符估算。冷启动或刚压缩清空锚点时，退化为对整个 history 做字符估算。
+        current = conversation.current_tokens()
+    
+        if not manual and current < threshold:
+            return None
+    
+        if not manual and breaker is not None and breaker.is_open():
+            return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
+    
+        before_tokens = current
+    
+        # 决定保留多少尾部消息原文。只有前缀 messages[:keep_start] 会被摘要；
+        # messages[keep_start:] 原样保留，让模型看到近期原文而非靠有损摘要复述。
+        keep_start = _compute_keep_start_index(conversation.history)
+        to_summarize = conversation.history[:keep_start]
+        keep_tail = conversation.history[keep_start:]
+        from gcode.runtime.constraints import (
+            collect_constraints,
+            render_constraints,
+            ConstraintLimitError,
+        )
+    
+        try:
+            constraints = collect_constraints(conversation.history)
+        except (ConstraintLimitError, TypeError) as error:
+            return f"不能安全压缩用户约束: {error}"
+        notification_ids = list(
+            dict.fromkeys(
+                identifier
+                for message in conversation.history
+                for identifier in message.notification_ids
+            )
+        )
+    
+        # 待摘要的前缀太小时退化为不压缩——要么全部消息都落在保留窗口内
+        # （keep_start <= 0），要么摘要回收的 token 还不够摘要本身的开销。
+        if keep_start <= 0 or _prefix_too_small_to_compact(to_summarize):
+            return None
+    
+        messages_for_summary = build_messages(list(to_summarize), protocol)
+    
+        summary_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": SUMMARY_PROMPT},
+        ]
+        summary_messages.extend(messages_for_summary)
+        summary_messages.append(
+            {
+                "role": "user",
+                "content": "请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            }
+        )
+    
+        summary_conv = ConversationManager()
+        summary_conv.history = [
+            Message(role="user", content=SUMMARY_PROMPT),
+        ]
+        # 只摘要前缀；保留的尾部在下面重建时原样拼回。
+        for msg in copy.deepcopy(to_summarize):
+            summary_conv.history.append(msg)
+        summary_conv.history.append(
+            Message(
+                role="user",
+                content="请根据以上对话生成结构化摘要。记住：不要调用任何工具。",
+            )
+        )
+    
+        llm_output: str | None = None
+        for attempt in range(1):
+            try:
+                from gcode.tools.base import StreamEnd, StreamEvent, TextDelta
+    
+                collected_text = ""
+                finish_reason: str | None = None
+                summary_client = (
+                    client.with_output_limit(
+                        min(SUMMARY_OUTPUT_RESERVE, context_window // 4)
+                    )
+                    if hasattr(client, "with_output_limit")
+                    else client
+                )
+                async for event in summary_client.stream(
+                    summary_conv, system=SUMMARY_PROMPT
+                ):
+                    if isinstance(event, TextDelta):
+                        collected_text += event.text
+                    elif isinstance(event, StreamEnd):
+                        finish_reason = event.stop_reason
+                        if event.usage_valid and usage_recorder is not None:
+                            usage_recorder(
+                                event.input_tokens,
+                                event.output_tokens,
+                                event.cache_read,
+                                event.cache_creation,
+                            )
+                        elif not event.usage_valid and usage_unknown_recorder is not None:
+                            usage_unknown_recorder()
+                    elif getattr(event, "tool_name", None):
+                        raise ValueError("Summary attempted to call a tool")
+                if finish_reason not in {"end_turn", "stop", "stop_sequence"}:
+                    raise ValueError(f"Incomplete summary stream: {finish_reason}")
+                validate_summary_structure(extract_summary(collected_text))
+                llm_output = collected_text
+                break
+    
+            except Exception as e:
+                if finish_reason is None and usage_unknown_recorder is not None:
+                    usage_unknown_recorder()
+                if breaker is not None:
+                    breaker.record_failure()
+                return f"摘要生成失败: {e}"
+    
+        if llm_output is None:
+            if breaker is not None:
+                breaker.record_failure()
+            return "摘要生成失败：多次重试后仍超出上下文限制"
+    
+        summary = extract_summary(llm_output)
+        literal_constraints = render_constraints(constraints)
+        if literal_constraints:
+            summary += "\n\n" + literal_constraints
+        attachment = build_recovery_attachment(recovery, tool_schemas)
+        # 重建 = 摘要(user) + 尾部原文。
+        new_messages = build_compact_messages(
+            summary,
+            attachment=attachment,
+            has_keep_tail=bool(keep_tail),
+            transcript_path=transcript_path,
+        )
+        new_messages = new_messages + list(keep_tail)
+        new_messages[0].origin = "compaction"
+        new_messages[0].preserved_constraints = constraints
+        new_messages[0].notification_ids = notification_ids
+    
+        # Commit a durable checkpoint before replacing the live projection. A crash
+        # or disk-full error must never leave only a partially generated summary.
+        durable_summary = summary + ("\n\n" + attachment if attachment else "")
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = {
+                "version": 1,
+                "summary": durable_summary,
+                "keep": [asdict(m) for m in keep_tail],
+                "tokens_before": before_tokens,
+                "stop_reason": finish_reason,
+                # The projection is lossy even when structurally valid. Preserve the
+                # complete pre-compaction source for inspection and recovery.
+>               "source_history": [asdict(m) for m in history],
+                                                      ^^^^^^^
+            }
+E           NameError: name 'history' is not defined
+
+gcode/context/manager.py:1037: NameError
+=========================== short test summary info ============================
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_recent_messages_kept_verbatim
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_summary_only_covers_prefix
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_tool_pair_not_split
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_anchor_reset_after_compact
+FAILED tests/test_context.py::TestAutoCompactKeepRecent::test_event_carries_boundary_summary_and_keep
+FAILED tests/test_checkpoint_integrity.py::test_literal_constraint_survives_three_compactions_and_disk_roundtrip
+FAILED tests/test_checkpoint_integrity.py::test_compact_retains_artifact_and_commits_before_projection
+FAILED tests/test_checkpoint_integrity.py::test_checkpoint_write_failure_preserves_original_history
+8 failed, 65 passed in 1.12s

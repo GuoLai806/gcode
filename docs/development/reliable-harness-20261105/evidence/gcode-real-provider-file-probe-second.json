@@ -1,0 +1,30 @@
+{
+  "kind": "real existing configured provider, actual Agent loop, temporary read-only file",
+  "provider_host": "api.deepseek.com",
+  "model": "deepseek-flash",
+  "stop_reason": "completed",
+  "answer_contains_marker": true,
+  "tool_names": [
+    "ReadFile"
+  ],
+  "wall_ms": 3434.861291956622,
+  "usage": {
+    "scope": "c6dde34997d049678d2bb3d0027f4d59",
+    "max_total": 150000,
+    "prompt_uncached": 447,
+    "output": 119,
+    "cache_read": 3968,
+    "cache_write": 0,
+    "revision": 2,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 4534,
+    "remaining": 145466,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "credential_helper_sha256": "cd40ee20933a0492b88c636f8d99f26bff687d26951244f13122dc9bad1c0f0b",
+  "model_backend_used": true,
+  "writes_exposed": false
+}

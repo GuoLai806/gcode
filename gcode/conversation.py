@@ -19,6 +19,8 @@ class ToolResultBlock:
     tool_use_id: str
     content: str
     is_error: bool = False
+    details: dict[str, Any] | None = None
+    content_blocks: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -34,6 +36,9 @@ class Message:
     tool_uses: list[ToolUseBlock] = field(default_factory=list)
     tool_results: list[ToolResultBlock] = field(default_factory=list)
     thinking_blocks: list[ThinkingBlock] = field(default_factory=list)
+    origin: str = ""
+    preserved_constraints: list[str] = field(default_factory=list)
+    notification_ids: list[str] = field(default_factory=list)
 
 
 # 估算最后一次 API 用量锚点之后追加的消息 token 开销时使用的字符/token 比率。
@@ -54,7 +59,12 @@ def _message_chars(m: Message) -> int:
     for tu in m.tool_uses:
         n += len(tu.tool_name) + len(json.dumps(tu.arguments, ensure_ascii=False))
     for tr in m.tool_results:
-        n += len(tr.content)
+        from gcode.serialization import tool_result_text
+
+        n += len(tool_result_text(tr))
+        n += 4800 * sum(
+            block.get("type") == "image" for block in tr.content_blocks or []
+        )
     return n
 
 
@@ -115,11 +125,11 @@ class ConversationManager:
         """
         if self.baseline_tokens <= 0:
             return estimate_tokens(self.history)
-        tail = self.history[self.anchor_count:]
+        tail = self.history[self.anchor_count :]
         return self.baseline_tokens + estimate_tokens(tail)
 
-    def add_user_message(self, content: str) -> None:
-        self.history.append(Message(role="user", content=content))
+    def add_user_message(self, content: str, origin: str = "user") -> None:
+        self.history.append(Message(role="user", content=content, origin=origin))
 
     def add_assistant_message(
         self,
@@ -141,13 +151,12 @@ class ConversationManager:
             Message(
                 role="user",
                 content=f"<system-reminder>\n{content}\n</system-reminder>",
+                origin="reminder",
             )
         )
 
     def add_tool_results_message(self, tool_results: list[ToolResultBlock]) -> None:
-        self.history.append(
-            Message(role="user", content="", tool_results=tool_results)
-        )
+        self.history.append(Message(role="user", content="", tool_results=tool_results))
 
     @contextmanager
     def tool_result_transaction(self) -> Iterator[list[ToolResultBlock]]:
@@ -199,15 +208,22 @@ class ConversationManager:
                     if candidate.content:
                         texts.append(candidate.content)
                     for result in candidate.tool_results:
-                        if result.tool_use_id in expected and result.tool_use_id not in seen:
+                        if (
+                            result.tool_use_id in expected
+                            and result.tool_use_id not in seen
+                        ):
                             results.append(result)
                             seen.add(result.tool_use_id)
                         else:
-                            texts.append(f"[Unpaired tool output {result.tool_use_id}]\n{result.content}")
+                            texts.append(
+                                f"[Unpaired tool output {result.tool_use_id}]\n{result.content}"
+                            )
                             changes += 1
                 for tool_use in message.tool_uses:
                     if tool_use.tool_use_id not in seen:
-                        results.append(ToolResultBlock(tool_use.tool_use_id, interruption, True))
+                        results.append(
+                            ToolResultBlock(tool_use.tool_use_id, interruption, True)
+                        )
                         seen.add(tool_use.tool_use_id)
                         changes += 1
                 if result_message is None:
@@ -216,11 +232,13 @@ class ConversationManager:
                 result_message.content = "\n\n".join(texts)
                 repaired.append(result_message)
             elif message.tool_results:
-                message.content = "\n\n".join(
-                    [message.content] if message.content else []
-                ) + ("\n\n" if message.content else "") + "\n\n".join(
-                    f"[Unpaired tool output {tr.tool_use_id}]\n{tr.content}"
-                    for tr in message.tool_results
+                message.content = (
+                    "\n\n".join([message.content] if message.content else [])
+                    + ("\n\n" if message.content else "")
+                    + "\n\n".join(
+                        f"[Unpaired tool output {tr.tool_use_id}]\n{tr.content}"
+                        for tr in message.tool_results
+                    )
                 )
                 message.tool_results = []
                 repaired.append(message)
@@ -233,15 +251,14 @@ class ConversationManager:
             self.baseline_tokens = self.anchor_count = self.last_input_tokens = 0
         return changes
 
-
     def inject_environment(self, context: str) -> None:
         if not self.env_injected:
-            self.history.insert(0, Message(role="user", content=context))
+            self.history.insert(
+                0, Message(role="user", content=context, origin="environment")
+            )
             self.env_injected = True
 
-    def inject_long_term_memory(
-        self, instructions: str, memories: str
-    ) -> None:
+    def inject_long_term_memory(self, instructions: str, memories: str) -> None:
         if self.ltm_injected:
             return
         sections: list[str] = []
@@ -270,7 +287,9 @@ class ConversationManager:
             "</system-reminder>"
         )
         pos = 1 if self.env_injected else 0
-        self.history.insert(pos, Message(role="user", content=wrapped))
+        self.history.insert(
+            pos, Message(role="user", content=wrapped, origin="instructions")
+        )
         self.ltm_injected = True
 
     def replace_history(self, new_messages: list[Message]) -> None:
@@ -283,7 +302,6 @@ class ConversationManager:
         self.baseline_tokens = 0
         self.anchor_count = 0
         self.last_input_tokens = 0
-
 
     def get_messages(self) -> list[Message]:
         return list(self.history)

@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-11-05T15:59:01.010584+00:00",
+  "baseline": "221c870",
+  "evidence_kind": "synthetic subprocess tests only",
+  "node_version": "v26.4.0",
+  "python_version": "3.9.6",
+  "tests": 35,
+  "failures": 0,
+  "exit_code": 0,
+  "hashes": {
+    "sidecar/server.mjs": "77375e5724a1c84656d5d014f8814ab08b457cccb5dd324442a6e862e960b20f",
+    "sidecar/pi-local-provider.mjs": "0c84a38818f07d51c6e10a94a1ae8d04a6f05bb1b74984d860f9a5ee6973dacd",
+    "gcode/cu/transport.py": "1065f85e899bceba807c46d2df8da0443329dbdba8ac936718ae67f61986e781",
+    "gcode/tools/desktop.py": "bf96805c0b969fe72b72f412f7da775c960ce27b6eaf15cb145fec7cf3f47b7f",
+    "tests/test_cu_transport.py": "21acfc92d722b9a15e3904d60c70557a2385f1445d207bcef70cb520467d54e2",
+    "tests/test_desktop_tools.py": "9ae46edacc7ae88f2aa35b851924f8a58061b23f5899243e7050c4a2ded2d2b1",
+    "sidecar/launch-proof.mjs": "950b76afeea1fb54ba3cfa6db3a455245f0e727f12249630c28939cdaaa93d6a",
+    "sidecar/reconcile-preparation.mjs": "ee3255cc8a765946d4b8e1f21906978a7c6a81be110947f3fe470bc3b56d9e82"
+  },
+  "junit": "cu-test-results.xml",
+  "log": "cu-test.log",
+  "native_and_gui_validation": "one launch accepted by earlier adapter, unknown initially; one operator reconciliation followed by separate read-only audit; full input task not tested by this suite"
+}

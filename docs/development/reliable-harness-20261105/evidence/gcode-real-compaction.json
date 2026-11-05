@@ -1,0 +1,31 @@
+{
+  "kind": "actual configured model manual_compact on synthetic-only history",
+  "model": "deepseek-flash",
+  "result_type": "ErrorEvent",
+  "committed": false,
+  "literal_retained": true,
+  "result_marker_retained": false,
+  "todo_marker_retained": false,
+  "source_history_count": 0,
+  "before_count": 14,
+  "wall_ms": 7983.883542008698,
+  "usage": {
+    "scope": "4038983436ef407290dd9b865e5b70d4",
+    "max_total": 100000,
+    "prompt_uncached": 24026,
+    "output": 1231,
+    "cache_read": 0,
+    "cache_write": 0,
+    "revision": 1,
+    "usage_unknown": 0,
+    "max_total_tokens": 100000,
+    "observed_total": 25257,
+    "remaining": 74743,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "manager_sha256": "022eb6b954a9d54060856a51a42fc7a76ba423dfca480326a4087db52c94993a",
+  "error": "摘要生成失败: Summary must contain exactly one ordered summary block",
+  "scope": "one synthetic-history real-model compaction, not a semantic fidelity rate"
+}

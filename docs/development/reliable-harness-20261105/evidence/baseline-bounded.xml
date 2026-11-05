@@ -1,0 +1,1319 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="19" failures="35" skipped="0" tests="569" time="24.098" timestamp="2026-11-05T23:32:02.247287+08:00" hostname="MacBook-Pro.local"><testcase classname="tests.test_agent" name="test_single_step_tool_call" time="0.005" /><testcase classname="tests.test_agent" name="test_multi_step_autonomous" time="0.003"><failure message="AssertionError: assert not True&#10; +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=4.6250002924352884e-05).is_error">@pytest.mark.asyncio
+    async def test_multi_step_autonomous():
+        """Agent 先 WriteFile 再 ReadFile 然后停止 —— 端到端的多步流程。"""
+        client = MockLLMClient([
+            # 第 1 轮：WriteFile
+            [
+                TextDelta("Creating file."),
+                ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/GCode_test_hello.txt", "content": "Hello World"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：ReadFile 进行验证
+            [
+                TextDelta("Verifying content."),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/GCode_test_hello.txt"}),
+                StreamEnd("end_turn", input_tokens=40, output_tokens=25),
+            ],
+            # 第 3 轮：最终答案
+            [
+                TextDelta("File created and verified. Content is correct."),
+                StreamEnd("end_turn", input_tokens=60, output_tokens=30),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir="/tmp")
+        conv = ConversationManager()
+        conv.add_user_message("Create hello.txt with Hello World, then verify")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["tool_use"]) == 2
+        assert c["tool_use"][0].tool_name == "WriteFile"
+        assert c["tool_use"][1].tool_name == "ReadFile"
+        assert len(c["turn"]) == 2
+        assert len(c["loop"]) == 1
+        assert c["loop"][0].total_turns == 3
+        # 验证文件确实被创建了
+&gt;       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=4.6250002924352884e-05).is_error
+
+tests/test_agent.py:159: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_stop_end_turn" time="0.002" /><testcase classname="tests.test_agent" name="test_stop_max_iterations" time="0.003" /><testcase classname="tests.test_agent" name="test_stop_cancel" time="0.151" /><testcase classname="tests.test_agent" name="test_stop_consecutive_unknown_tools" time="0.003" /><testcase classname="tests.test_agent" name="test_message_splicing" time="0.003"><failure message="assert 4 == 5&#10; +  where 4 = len([{'role': 'user', 'content': 'Current working directory: .\nOperating system: Darwin 25.6.0\nCurrent time: 2026-11-05 ...st&gt;=9.0.3&quot;,\n29\t    &quot;pytest-asyncio&gt;=1.3.0&quot;,\n30\t]', 'is_error': False}]}, {'role': 'assistant', 'content': 'Done.'}])">@pytest.mark.asyncio
+    async def test_message_splicing():
+        """assistant 消息包含 text + 多个 tool_use；对应的 tool_result 被打包在一起。"""
+        client = MockLLMClient([
+            # 第 1 轮：一个响应里包含两次工具调用
+            [
+                TextDelta("Reading two files."),
+                ToolCallComplete("t1", "ReadFile", {"file_path": "README.md"}),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "pyproject.toml"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：最终响应
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=10),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir=".")
+        conv = ConversationManager()
+        conv.add_user_message("Read both files")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        # 检查对话历史
+        msgs = build_anthropic_messages(conv.get_messages())
+        # env_context(user) + user_message + assistant(text+2 个 tool_use) + user(2 个 tool_result) + assistant(最终响应)
+&gt;       assert len(msgs) == 5
+E       assert 4 == 5
+E        +  where 4 = len([{'role': 'user', 'content': 'Current working directory: .\nOperating system: Darwin 25.6.0\nCurrent time: 2026-11-05 ...st&gt;=9.0.3",\n29\t    "pytest-asyncio&gt;=1.3.0",\n30\t]', 'is_error': False}]}, {'role': 'assistant', 'content': 'Done.'}])
+
+tests/test_agent.py:314: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_concurrent_batch_execution" time="0.003" /><testcase classname="tests.test_agent" name="test_token_usage_accumulates" time="0.003" /><testcase classname="tests.test_agent" name="test_plan_mode" time="0.001" /><testcase classname="tests.test_agent" name="test_plan_mode_denied_tool_returns_error" time="0.002" /><testcase classname="tests.test_agent" name="test_partition_tool_calls" time="0.000" /><testcase classname="tests.test_agent" name="test_system_prompt_normal" time="0.000"><failure message="AssertionError: assert 'gcode' in 'You are GCode, an AI programming assistant running in the terminal. You help users with software engineering tasks in...xt, not intermediate files.\n\n# Environment\n - Working directory: .\n - Platform: Darwin 25.6.0\n - Date: 2026-11-05'">def test_system_prompt_normal():
+        sp = build_system_prompt()
+&gt;       assert "gcode" in sp
+E       AssertionError: assert 'gcode' in 'You are GCode, an AI programming assistant running in the terminal. You help users with software engineering tasks in...xt, not intermediate files.\n\n# Environment\n - Working directory: .\n - Platform: Darwin 25.6.0\n - Date: 2026-11-05'
+
+tests/test_agent.py:476: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_system_prompt_plan" time="0.000" /><testcase classname="tests.test_agent" name="test_plan_mode_sparse_reminder" time="0.000" /><testcase classname="tests.test_agent" name="test_environment_context" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_normal_command" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_command_with_args" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_command_case_insensitive" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_only_slash" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_not_a_command" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_empty_input" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_whitespace_input" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_command_with_leading_spaces" time="0.000" /><testcase classname="tests.test_commands.TestParseCommand" name="test_command_with_multiple_args" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_register_and_find" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_find_by_alias" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_find_unknown" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_list_commands_excludes_hidden" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_alias_conflict_raises" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_name_conflict_raises" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_name_alias_cross_conflict" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_async_register" time="0.000" /><testcase classname="tests.test_commands.TestCommandRegistry" name="test_async_register_conflict" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_empty_prefix" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_prefix_match" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_multiple_matches" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_alias_match" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_no_match" time="0.000" /><testcase classname="tests.test_commands.TestComplete" name="test_hidden_excluded" time="0.000" /><testcase classname="tests.test_commands.TestHelpHandler" name="test_list_all" time="0.002" /><testcase classname="tests.test_commands.TestHelpHandler" name="test_help_specific_command" time="0.000" /><testcase classname="tests.test_commands.TestHelpHandler" name="test_help_unknown_command" time="0.000" /><testcase classname="tests.test_commands.TestPlanDoHandlers" name="test_plan_switches_mode" time="0.000" /><testcase classname="tests.test_commands.TestPlanDoHandlers" name="test_plan_with_args_sends_message" time="0.000" /><testcase classname="tests.test_commands.TestPlanDoHandlers" name="test_do_switches_back" time="0.000"><failure message="ModuleNotFoundError: No module named 'gcode.commands.handlers.do'">self = &lt;test_commands.TestPlanDoHandlers object at 0x109cb7b00&gt;
+
+    @pytest.mark.asyncio
+    async def test_do_switches_back(self) -&gt; None:
+&gt;       from gcode.commands.handlers.do import handle_do
+E       ModuleNotFoundError: No module named 'gcode.commands.handlers.do'
+
+tests/test_commands.py:313: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_commands.TestSkillHandler" name="test_skill_list_no_loader" time="0.000" /><testcase classname="tests.test_commands.TestSkillHandler" name="test_skill_list_with_loader" time="0.000" /><testcase classname="tests.test_commands.TestSkillHandler" name="test_skill_unknown_subcmd" time="0.000" /><testcase classname="tests.test_commands.TestStatusHandler" name="test_status_output" time="0.001" /><testcase classname="tests.test_commands.TestSessionHandler" name="test_session_no_manager" time="0.000" /><testcase classname="tests.test_commands.TestSessionHandler" name="test_session_list_empty" time="0.000" /><testcase classname="tests.test_commands.TestSessionHandler" name="test_session_unknown_sub" time="0.000" /><testcase classname="tests.test_commands.TestMemoryHandler" name="test_memory_display" time="0.000" /><testcase classname="tests.test_commands.TestMemoryHandler" name="test_memory_clear" time="0.000" /><testcase classname="tests.test_commands.TestMemoryHandler" name="test_memory_no_manager" time="0.000" /><testcase classname="tests.test_commands.TestRegisterAllCommands" name="test_all_commands_registered" time="0.000"><failure message="AssertionError: assert {'clear', 'co...mission', ...} == {'clear', 'co...'memory', ...}&#10;  &#10;  Extra items in the right set:&#10;  'do'&#10;  Use -v to get more diff">self = &lt;test_commands.TestRegisterAllCommands object at 0x109ce1100&gt;
+
+    def test_all_commands_registered(self) -&gt; None:
+        from gcode.commands.handlers import register_all_commands
+    
+        registry = CommandRegistry()
+        register_all_commands(registry)
+        cmds = registry.list_commands()
+        names = {c.name for c in cmds}
+        expected = {
+            "help", "compact", "clear", "plan", "do",
+            "session", "mcp", "memory", "permission",
+            "rewind", "status", "skill",
+        }
+&gt;       assert names == expected
+E       AssertionError: assert {'clear', 'co...mission', ...} == {'clear', 'co...'memory', ...}
+E         
+E         Extra items in the right set:
+E         'do'
+E         Use -v to get more diff
+
+tests/test_commands.py:466: AssertionError</failure></testcase><testcase classname="tests.test_commands.TestRegisterAllCommands" name="test_no_alias_conflicts" time="0.000" /><testcase classname="tests.test_commands.TestRegisterAllCommands" name="test_aliases_work" time="0.000" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_writes_file" time="0.001" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_idempotent" time="0.000" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_contains_tag_and_path" time="0.000" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_preview_truncated" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_single_oversized_persisted" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_under_limit_untouched" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_aggregate_limit" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_already_persisted_skipped" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_auto_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_manual_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_smaller_window" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_below_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_at_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_above_threshold" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_extracts_between_tags" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_no_tags_returns_full" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_only_summary_tag" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_starts_closed" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_opens_after_max_failures" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_success_resets" time="0.000" /><testcase classname="tests.test_context.TestBuildCompactMessages" name="test_basic_structure" time="0.000"><failure message="AssertionError: assert 1 == 2&#10; +  where 1 = len([Message(role='user', content='本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\nthe summary', tool_uses=[], tool_results=[], thinking_blocks=[])])">self = &lt;test_context.TestBuildCompactMessages object at 0x109ce3a40&gt;
+
+    def test_basic_structure(self) -&gt; None:
+        msgs = build_compact_messages("the summary")
+&gt;       assert len(msgs) == 2
+E       AssertionError: assert 1 == 2
+E        +  where 1 = len([Message(role='user', content='本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\nthe summary', tool_uses=[], tool_results=[], thinking_blocks=[])])
+
+tests/test_context.py:250: AssertionError</failure></testcase><testcase classname="tests.test_context.TestSessionDir" name="test_ensure_creates_dir" time="0.001" /><testcase classname="tests.test_context.TestSessionDir" name="test_cleanup" time="0.001" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_cold_start_falls_back_to_char_estimate" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_aggregates_all_usage_components" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_current_tokens_is_baseline_plus_increment" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_beats_char_estimate_after_cache_hit" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_replace_history_resets_anchor" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_empty" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_counts_text_thinking_tools_and_results" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_stream_end_carries_cache_fields" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_collector_propagates_cache_fields_into_response" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_empty_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_stops_at_token_floor" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_message_floor_when_tail_is_tiny" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_max_cap_stops_swallowing_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_short_history_keeps_everything" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_orphan_tool_result_pulled_back_to_tool_use" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_non_tool_boundary_untouched" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_pairing_preserved_via_compute" time="0.000" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_recent_messages_kept_verbatim" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_summary_only_covers_prefix" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_tool_pair_not_split" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_anchor_reset_after_compact" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_too_few_messages_degrades_to_no_compaction" time="0.000" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_event_carries_boundary_summary_and_keep" time="0.001" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_mapping_table" time="0.000" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_fetched_value" time="0.000" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_default" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[claude-sonnet-4-6-1m-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[some-model-1m-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4.1-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4.1-mini-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4o-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4o-mini-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4-turbo-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o1-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o1-preview-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o3-mini-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o4-mini-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-3.5-turbo-16385]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[claude-opus-4-6-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[CLAUDE-OPUS-4-6-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_specificity_order_gpt_4_1_before_generic" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_no_match_returns_zero" time="0.000" /><testcase classname="tests.test_context_window.TestDefaults" name="test_claude_default" time="0.000" /><testcase classname="tests.test_context_window.TestDefaults" name="test_unknown_model_default" time="0.000" /><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_success_is_cached_and_used" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d34050&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_success_is_cached_and_used(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=555_000)
+&gt;       with patch("GCode.client.create_client", return_value=fake) as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_raises_degrades_to_mapping_table" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109ce37d0&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_raises_degrades_to_mapping_table(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:134: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_returns_none_degrades_to_default" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d03f80&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_returns_none_degrades_to_default(self):
+        p = _provider(model="totally-unknown-model")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=None)
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_client_construction_failure_degrades" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d038c0&gt;
+
+    @pytest.mark.asyncio
+    async def test_client_construction_failure_degrades(self):
+        # 例如缺少 API key 会在 create_client 内部抛错 —— 必须被吞掉。
+        p = _provider(model="claude-sonnet-4-6")
+&gt;       with patch(
+            "GCode.client.create_client",
+            side_effect=Exception("no api key"),
+        ):
+
+tests/test_context_window.py:154: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_non_anthropic_provider_is_not_fetched" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d03350&gt;
+
+    @pytest.mark.asyncio
+    async def test_non_anthropic_provider_is_not_fetched(self):
+        p = _provider(protocol="openai-compat", model="gpt-4o")
+&gt;       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_explicit_config_skips_fetch" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d00530&gt;
+
+    @pytest.mark.asyncio
+    async def test_explicit_config_skips_fetch(self):
+        p = _provider(model="claude-sonnet-4-6", context_window=4096)
+&gt;       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_zero_or_negative_fetch_is_ignored" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x109d34350&gt;
+
+    @pytest.mark.asyncio
+    async def test_zero_or_negative_fetch_is_ignored(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=0)
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestValidator" name="test_unset_context_window_defaults_to_zero" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_explicit_context_window_preserved" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[-1]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[200000]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[True]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[3.5]" time="0.000" /><testcase classname="tests.test_hooks.TestLifecycleEvent" name="test_has_15_events" time="0.000" /><testcase classname="tests.test_hooks.TestLifecycleEvent" name="test_string_comparison" time="0.000" /><testcase classname="tests.test_hooks.TestLifecycleEvent" name="test_all_values" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_get_field_tool" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_get_field_event" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_get_field_args" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_get_field_unknown" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_expand_all_variables" time="0.000" /><testcase classname="tests.test_hooks.TestHookContext" name="test_expand_undefined_variable" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_single_condition" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_and_combination" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_or_combination" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_mixed_operators_error" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_empty_condition" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_regex_format" time="0.000" /><testcase classname="tests.test_hooks.TestParseCondition" name="test_no_valid_operator" time="0.000" /><testcase classname="tests.test_hooks.TestConditionEvaluate" name="test_eq" time="0.000" /><testcase classname="tests.test_hooks.TestConditionEvaluate" name="test_neq" time="0.000" /><testcase classname="tests.test_hooks.TestConditionEvaluate" name="test_regex" time="0.000" /><testcase classname="tests.test_hooks.TestConditionEvaluate" name="test_glob" time="0.000" /><testcase classname="tests.test_hooks.TestConditionGroupEvaluate" name="test_and_all_pass" time="0.000" /><testcase classname="tests.test_hooks.TestConditionGroupEvaluate" name="test_and_partial_fail" time="0.000" /><testcase classname="tests.test_hooks.TestConditionGroupEvaluate" name="test_or_any_pass" time="0.000" /><testcase classname="tests.test_hooks.TestConditionGroupEvaluate" name="test_or_all_fail" time="0.000" /><testcase classname="tests.test_hooks.TestConditionGroupEvaluate" name="test_empty_group" time="0.000" /><testcase classname="tests.test_hooks.TestCommandExecutor" name="test_normal_execution" time="0.008" /><testcase classname="tests.test_hooks.TestCommandExecutor" name="test_variable_substitution" time="0.005" /><testcase classname="tests.test_hooks.TestCommandExecutor" name="test_timeout" time="1.006" /><testcase classname="tests.test_hooks.TestPromptExecutor" name="test_returns_message" time="0.001" /><testcase classname="tests.test_hooks.TestHttpExecutor" name="test_mock_request" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_hooks.TestHttpExecutor object at 0x109d37620&gt;
+
+    @pytest.mark.asyncio
+    async def test_mock_request(self):
+        from gcode.hooks.executors import execute_http
+    
+        action = Action(type="http", url="https://httpbin.org/post", body='{"test": true}')
+        ctx = HookContext()
+        # 用 mock 避免发起真实的网络请求
+&gt;       with patch("GCode.hooks.executors.urlopen") as mock_urlopen:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_hooks.py:276: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_hooks.TestAgentExecutor" name="test_stub" time="0.000" /><testcase classname="tests.test_hooks.TestExecuteAction" name="test_dispatch" time="0.007" /><testcase classname="tests.test_hooks.TestExecuteAction" name="test_unknown_type" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_full_config" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_auto_id" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_empty" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_invalid_event" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_invalid_action_type" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_reject_on_non_pre_tool_use" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_async_on_pre_tool_use" time="0.000" /><testcase classname="tests.test_hooks.TestLoadHooks" name="test_missing_required_field" time="0.000" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_find_matching_hooks" time="0.000" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_find_with_condition_filter" time="0.000" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_once_filter" time="0.000" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_run_pre_tool_hooks_reject" time="0.006" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_run_pre_tool_hooks_no_reject" time="0.007" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_prompt_message_collection" time="0.001" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_error_does_not_raise" time="0.006" /><testcase classname="tests.test_hooks.TestHookEngine" name="test_async_hook_does_not_block" time="12.004"><error message="failed on teardown with &quot;Failed: Timeout (&gt;12.0s) from pytest-timeout.&quot;">event_loop_policy = &lt;asyncio.unix_events._UnixDefaultEventLoopPolicy object at 0x109e10200&gt;
+_asyncio_loop_factory = None
+request = &lt;SubRequest '_function_scoped_runner' for &lt;Coroutine test_async_hook_does_not_block&gt;&gt;
+
+    @pytest.fixture(
+        scope=scope,
+        name=f"_{scope}_scoped_runner",
+    )
+    def _scoped_runner(
+        event_loop_policy,
+        _asyncio_loop_factory,
+        request: FixtureRequest,
+    ) -&gt; Iterator[Runner]:
+        new_loop_policy = event_loop_policy
+        debug_mode = _get_asyncio_debug(request.config)
+        with _temporary_event_loop_policy(new_loop_policy):
+            runner = Runner(
+                debug=debug_mode,
+                loop_factory=_asyncio_loop_factory,
+            ).__enter__()
+            if _asyncio_loop_factory is not None:
+                _set_event_loop(runner.get_loop())
+            try:
+                yield runner
+            except Exception as e:
+                runner.__exit__(type(e), e, e.__traceback__)
+            else:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore", ".*BaseEventLoop.shutdown_asyncgens.*", RuntimeWarning
+                    )
+                    try:
+&gt;                       runner.__exit__(None, None, None)
+
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:1053: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:62: in __exit__
+    self.close()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:70: in close
+    _cancel_all_tasks(loop)
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/runners.py:206: in _cancel_all_tasks
+    loop.run_until_complete(tasks.gather(*to_cancel, return_exceptions=True))
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;selectors.KqueueSelector object at 0x10a0c8140&gt;, timeout = None
+
+    def select(self, timeout=None):
+        timeout = None if timeout is None else max(timeout, 0)
+        # If max_ev is 0, kqueue will ignore the timeout. For consistent
+        # behavior with the other selector classes, we prevent that here
+        # (using max). See https://bugs.python.org/issue29255
+        max_ev = self._max_events or 1
+        ready = []
+        try:
+&gt;           kev_list = self._selector.control(None, max_ev, timeout)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: Timeout (&gt;12.0s) from pytest-timeout.
+
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/selectors.py:566: Failed</error></testcase><testcase classname="tests.test_hooks.TestAgentHookIntegration" name="test_pre_tool_use_reject_skips_tool" time="0.010" /><testcase classname="tests.test_interruption" name="test_cancel_preserves_success_and_continues[False]" time="0.002" /><testcase classname="tests.test_interruption" name="test_cancel_preserves_success_and_continues[True]" time="0.002" /><testcase classname="tests.test_interruption" name="test_generator_close_at_result_event" time="0.001" /><testcase classname="tests.test_interruption" name="test_close_during_model_stream_does_not_execute_incomplete_batch" time="0.001" /><testcase classname="tests.test_interruption" name="test_noninteractive_cancel_closes_chain" time="0.001" /><testcase classname="tests.test_interruption" name="test_unknown_tool_termination_is_closed" time="0.001" /><testcase classname="tests.test_interruption" name="test_repair_old_history_preserves_text_thinking_and_partial_results" time="0.000" /><testcase classname="tests.test_interruption" name="test_duplicate_result_kept_as_text" time="0.000" /><testcase classname="tests.test_interruption" name="test_resume_repair_is_append_only_and_stable" time="0.001" /><testcase classname="tests.test_interruption" name="test_each_client_repairs_before_serialization[AnthropicClient-build_anthropic_messages]" time="0.019" /><testcase classname="tests.test_interruption" name="test_each_client_repairs_before_serialization[OpenAIClient-build_openai_input]" time="0.001" /><testcase classname="tests.test_interruption" name="test_each_client_repairs_before_serialization[OpenAICompatClient-build_chat_completion_messages]" time="0.001" /><testcase classname="tests.test_interruption" name="test_bash_cleans_real_child_tree[cancel]" time="1.025" /><testcase classname="tests.test_interruption" name="test_bash_cleans_real_child_tree[timeout]" time="2.009" /><testcase classname="tests.test_interruption" name="test_bash_cleans_real_child_tree[double_cancel]" time="1.026" /><testcase classname="tests.test_interruption" name="test_textual_enter_interrupt_and_disk_resume" time="1.419" /><testcase classname="tests.test_interruption" name="test_completed_answers_do_not_make_background_summary_calls" time="0.599" /><testcase classname="tests.test_interruption" name="test_session_synopsis_implementation_removed" time="0.000" /><testcase classname="tests.test_interruption" name="test_escape_during_permission_restores_input" time="0.348" /><testcase classname="tests.test_interruption" name="test_failed_turn_can_continue_without_repeating_completed_tool[network]" time="0.266" /><testcase classname="tests.test_interruption" name="test_failed_turn_can_continue_without_repeating_completed_tool[unexpected]" time="0.211" /><testcase classname="tests.test_interruption" name="test_cancel_during_subprocess_creation_is_reaped" time="0.058" /><testcase classname="tests.test_interruption" name="test_app_shutdown_cancels_and_persists_pending_tools" time="0.109" /><testcase classname="tests.test_mcp.TestResolveEnvVars" name="test_substitutes_existing_var" time="0.000" /><testcase classname="tests.test_mcp.TestResolveEnvVars" name="test_preserves_missing_var" time="0.000" /><testcase classname="tests.test_mcp.TestResolveEnvVars" name="test_no_placeholder_passthrough" time="0.000" /><testcase classname="tests.test_mcp.TestResolveEnvVars" name="test_multiple_vars" time="0.000" /><testcase classname="tests.test_mcp.TestResolveEnvVars" name="test_mixed_existing_and_missing" time="0.000" /><testcase classname="tests.test_mcp.TestBuildChildEnv" name="test_includes_path" time="0.000" /><testcase classname="tests.test_mcp.TestBuildChildEnv" name="test_includes_declared_vars" time="0.000" /><testcase classname="tests.test_mcp.TestBuildChildEnv" name="test_excludes_host_vars" time="0.000" /><testcase classname="tests.test_mcp.TestBuildChildEnv" name="test_empty_declared_env" time="0.000" /><testcase classname="tests.test_mcp.TestLoadConfigMCP" name="test_no_mcp_servers" time="0.001" /><testcase classname="tests.test_mcp.TestLoadConfigMCP" name="test_stdio_server" time="0.001"><failure message="gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs">self = &lt;test_mcp.TestLoadConfigMCP object at 0x109d975c0&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_stdio_server0')
+
+    def test_stdio_server(self, tmp_path: Path) -&gt; None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              github:
+                command: npx
+                args: ["-y", "@modelcontextprotocol/server-github"]
+                env:
+                  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+        """)
+&gt;       config = load_config(path)
+                 ^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/config.py:225: in load_config
+    return _load_single_file(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+gcode/config.py:146: in _load_single_file
+    validated = validate_config_structure(raw)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gcode/validator.py:230: in validate_config_structure
+    "mcp_servers": validate_mcp_servers(raw.get("mcp_servers")),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+raw_mcp = {'github': {'command': 'npx', 'args': ['-y', '@modelcontextprotocol/server-github'], 'env': {'GITHUB_TOKEN': '${GITHUB_TOKEN}'}}}
+
+    def validate_mcp_servers(raw_mcp: list | None) -&gt; list[dict]:
+        """校验 mcp_servers 配置段，返回清洗后的 server 配置字典列表。"""
+        if raw_mcp is None:
+            return []
+    
+        if not isinstance(raw_mcp, list):
+&gt;           raise ConfigError("'mcp_servers' must be a list of server configs")
+E           gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs
+
+gcode/validator.py:124: ConfigError</failure></testcase><testcase classname="tests.test_mcp.TestLoadConfigMCP" name="test_http_server" time="0.001"><failure message="gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs">self = &lt;test_mcp.TestLoadConfigMCP object at 0x109d97860&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_http_server0')
+
+    def test_http_server(self, tmp_path: Path) -&gt; None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              remote:
+                url: "https://api.example.com/mcp"
+                headers:
+                  Authorization: "Bearer ${TOKEN}"
+        """)
+&gt;       config = load_config(path)
+                 ^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:133: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/config.py:225: in load_config
+    return _load_single_file(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+gcode/config.py:146: in _load_single_file
+    validated = validate_config_structure(raw)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gcode/validator.py:230: in validate_config_structure
+    "mcp_servers": validate_mcp_servers(raw.get("mcp_servers")),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+raw_mcp = {'remote': {'url': 'https://api.example.com/mcp', 'headers': {'Authorization': 'Bearer ${TOKEN}'}}}
+
+    def validate_mcp_servers(raw_mcp: list | None) -&gt; list[dict]:
+        """校验 mcp_servers 配置段，返回清洗后的 server 配置字典列表。"""
+        if raw_mcp is None:
+            return []
+    
+        if not isinstance(raw_mcp, list):
+&gt;           raise ConfigError("'mcp_servers' must be a list of server configs")
+E           gcode.validator.ConfigError: 'mcp_servers' must be a list of server configs
+
+gcode/validator.py:124: ConfigError</failure></testcase><testcase classname="tests.test_mcp.TestLoadConfigMCP" name="test_both_command_and_url_errors" time="0.001"><failure message="AssertionError: Regex pattern did not match.&#10;  Expected regex: 'cannot have both'&#10;  Actual message: &quot;'mcp_servers' must be a list of server configs&quot;">self = &lt;test_mcp.TestLoadConfigMCP object at 0x109d97b00&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_both_command_and_url_erro0')
+
+    def test_both_command_and_url_errors(self, tmp_path: Path) -&gt; None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              bad:
+                command: npx
+                url: "https://example.com"
+        """)
+&gt;       with pytest.raises(ConfigError, match="cannot have both"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'cannot have both'
+E         Actual message: "'mcp_servers' must be a list of server configs"
+
+tests/test_mcp.py:151: AssertionError</failure></testcase><testcase classname="tests.test_mcp.TestLoadConfigMCP" name="test_neither_command_nor_url_errors" time="0.001"><failure message="AssertionError: Regex pattern did not match.&#10;  Expected regex: 'must have either'&#10;  Actual message: &quot;'mcp_servers' must be a list of server configs&quot;">self = &lt;test_mcp.TestLoadConfigMCP object at 0x109d97da0&gt;
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_neither_command_nor_url_e0')
+
+    def test_neither_command_nor_url_errors(self, tmp_path: Path) -&gt; None:
+        path = self._write_config(tmp_path, """\
+            providers:
+              - name: test
+                protocol: openai
+                base_url: http://localhost
+                model: gpt-4o
+            mcp_servers:
+              bad:
+                env:
+                  FOO: bar
+        """)
+&gt;       with pytest.raises(ConfigError, match="must have either"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'must have either'
+E         Actual message: "'mcp_servers' must be a list of server configs"
+
+tests/test_mcp.py:166: AssertionError</failure></testcase><testcase classname="tests.test_mcp.TestMCPToolWrapper" name="test_name_format" time="0.001"><failure message="AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?">self = &lt;test_mcp.TestMCPToolWrapper object at 0x109dbc140&gt;
+
+    def test_name_format(self) -&gt; None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import MCPToolWrapper
+        from gcode.mcp.client import MCPClient
+    
+        tool_def = mcp_types.Tool(
+            name="search_issues",
+            description="Search GitHub issues",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "query": {"type": "string"},
+                },
+                "required": ["repo"],
+            },
+        )
+        mock_client = MagicMock(spec=MCPClient)
+&gt;       wrapper = MCPToolWrapper("github", tool_def, mock_client)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:192: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:73: in __init__
+    tool_def.name, tool_def.inputSchema
+                   ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Tool(name='search_issues', title=None, description='Search GitHub issues', input_schema={'type': 'object', 'properties...'type': 'string'}}, 'required': ['repo']}, execution=None, output_schema=None, icons=None, annotations=None, meta=None)
+item = 'inputSchema'
+
+    def __getattr__(self, item: str) -&gt; Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+&gt;                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?
+
+../venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError</failure></testcase><testcase classname="tests.test_mcp.TestMCPToolWrapper" name="test_get_schema_uses_original_input_schema" time="0.000"><failure message="AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?">self = &lt;test_mcp.TestMCPToolWrapper object at 0x109d97f50&gt;
+
+    def test_get_schema_uses_original_input_schema(self) -&gt; None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import MCPToolWrapper
+    
+        input_schema = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+            "required": ["q"],
+        }
+        tool_def = mcp_types.Tool(
+            name="search",
+            description="Search",
+            inputSchema=input_schema,
+        )
+        mock_client = MagicMock()
+&gt;       wrapper = MCPToolWrapper("srv", tool_def, mock_client)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:73: in __init__
+    tool_def.name, tool_def.inputSchema
+                   ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Tool(name='search', title=None, description='Search', input_schema={'type': 'object', 'properties': {'q': {'type': 'string'}}, 'required': ['q']}, execution=None, output_schema=None, icons=None, annotations=None, meta=None)
+item = 'inputSchema'
+
+    def __getattr__(self, item: str) -&gt; Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+&gt;                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'Tool' object has no attribute 'inputSchema'. Did you mean: 'input_schema'?
+
+../venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError</failure></testcase><testcase classname="tests.test_mcp.TestExtractText" name="test_text_content" time="0.000" /><testcase classname="tests.test_mcp.TestExtractText" name="test_empty_content" time="0.000" /><testcase classname="tests.test_mcp.TestExtractText" name="test_image_content" time="0.000"><failure message="AttributeError: 'ImageContent' object has no attribute 'mimeType'. Did you mean: 'mime_type'?">self = &lt;test_mcp.TestExtractText object at 0x109d971d0&gt;
+
+    def test_image_content(self) -&gt; None:
+        from mcp import types as mcp_types
+        from gcode.mcp.tool_wrapper import _extract_text
+    
+        content = [mcp_types.ImageContent(type="image", data="...", mimeType="image/png")]
+&gt;       assert "[image: image/png]" in _extract_text(content)
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:244: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+gcode/mcp/tool_wrapper.py:47: in _extract_text
+    parts.append(f"[image: {block.mimeType}]")
+                            ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ImageContent(type='image', data='...', mime_type='image/png', annotations=None, meta=None)
+item = 'mimeType'
+
+    def __getattr__(self, item: str) -&gt; Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+&gt;                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'ImageContent' object has no attribute 'mimeType'. Did you mean: 'mime_type'?
+
+../venv/lib/python3.12/site-packages/pydantic/main.py:1110: AttributeError</failure></testcase><testcase classname="tests.test_mcp.TestMCPManagerPartialFailure" name="test_single_server_failure_does_not_block_others" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_mcp.TestMCPManagerPartialFailure object at 0x109d96780&gt;
+
+    @pytest.mark.asyncio
+    async def test_single_server_failure_does_not_block_others(self) -&gt; None:
+        from gcode.mcp.manager import MCPManager
+        from gcode.tools import ToolRegistry
+    
+        good_config = MCPServerConfig(
+            name="good",
+            command="echo",
+            args=["hello"],
+        )
+        bad_config = MCPServerConfig(
+            name="bad",
+            command="nonexistent_command_xyz_12345",
+        )
+    
+        manager = MCPManager()
+        manager.load_configs([bad_config, good_config])
+    
+        registry = ToolRegistry()
+    
+&gt;       with patch("GCode.mcp.manager.MCPClient") as MockClient:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp.py:271: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_memory.TestProcessIncludes" name="test_no_includes" time="0.000" /><testcase classname="tests.test_memory.TestProcessIncludes" name="test_basic_include" time="0.001" /><testcase classname="tests.test_memory.TestProcessIncludes" name="test_recursive_include" time="0.001" /><testcase classname="tests.test_memory.TestProcessIncludes" name="test_depth_limit" time="0.000" /><testcase classname="tests.test_memory.TestProcessIncludes" name="test_path_outside_project_blocked" time="0.000" /><testcase classname="tests.test_memory.TestProcessIncludes" name="test_file_not_found" time="0.000" /><testcase classname="tests.test_memory.TestLoadInstructions" name="test_single_layer" time="0.001" /><testcase classname="tests.test_memory.TestLoadInstructions" name="test_multi_layer_priority" time="0.001" /><testcase classname="tests.test_memory.TestLoadInstructions" name="test_no_files_returns_empty" time="0.000" /><testcase classname="tests.test_memory.TestSessionRecord" name="test_user_message_roundtrip" time="0.000" /><testcase classname="tests.test_memory.TestSessionRecord" name="test_assistant_with_tool_uses" time="0.000" /><testcase classname="tests.test_memory.TestSessionRecord" name="test_tool_results_multiple_records" time="0.000" /><testcase classname="tests.test_memory.TestSessionRecord" name="test_malformed_jsonl_returns_none" time="0.000" /><testcase classname="tests.test_memory.TestSessionRecord" name="test_plain_assistant_message" time="0.000" /><testcase classname="tests.test_memory.TestSession" name="test_append_writes_jsonl_and_updates_meta" time="0.001" /><testcase classname="tests.test_memory.TestSession" name="test_title_set_from_first_user_message" time="0.000" /><testcase classname="tests.test_memory.TestSessionManager" name="test_create_and_list" time="0.001" /><testcase classname="tests.test_memory.TestSessionManager" name="test_delete" time="0.000" /><testcase classname="tests.test_memory.TestSessionManager" name="test_cleanup_removes_old_sessions" time="0.001" /><testcase classname="tests.test_memory.TestSessionManager" name="test_create_generates_valid_id" time="0.000" /><testcase classname="tests.test_memory.TestValidateMessageChain" name="test_complete_chain" time="0.000" /><testcase classname="tests.test_memory.TestValidateMessageChain" name="test_truncate_at_missing_tool_result" time="0.000" /><testcase classname="tests.test_memory.TestValidateMessageChain" name="test_empty_records" time="0.000" /><testcase classname="tests.test_memory.TestRecordsToMessages" name="test_basic_roundtrip" time="0.000" /><testcase classname="tests.test_memory.TestRecordsToMessages" name="test_tool_result_grouping" time="0.000" /><testcase classname="tests.test_memory.TestRecordsToMessages" name="test_system_prompt_skipped" time="0.000" /><testcase classname="tests.test_memory.TestSessionResume" name="test_resume_restores_messages" time="0.001" /><testcase classname="tests.test_memory.TestSessionResume" name="test_resume_nonexistent_returns_none" time="0.000" /><testcase classname="tests.test_memory.TestSessionResume" name="test_resume_repairs_incomplete_chain" time="0.001" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_make_and_parse_boundary_text_only" time="0.000" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_boundary_preserves_tool_pairs_in_keep" time="0.000" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_parse_malformed_boundary_degrades" time="0.000" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_resume_rebuilds_compacted_state" time="0.001" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_resume_uses_last_boundary_when_multiple" time="0.001" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_resume_no_boundary_full_replay" time="0.001" /><testcase classname="tests.test_memory.TestCompactBoundaryRoundTrip" name="test_append_record_does_not_bump_message_count" time="0.001" /><testcase classname="tests.test_memory.TestSessionMeta" name="test_save_and_load" time="0.000" /><testcase classname="tests.test_memory.TestSessionMeta" name="test_load_invalid_returns_none" time="0.000" /><testcase classname="tests.test_memory.TestMemoryManager" name="test_load_empty" time="0.000" /><testcase classname="tests.test_memory.TestMemoryManager" name="test_load_merges_user_and_project" time="0.001" /><testcase classname="tests.test_memory.TestMemoryManager" name="test_clear" time="0.001" /><testcase classname="tests.test_memory.TestMemoryManager" name="test_get_display_text_empty" time="0.000" /><testcase classname="tests.test_memory.TestMemoryManager" name="test_write_memories_splits_correctly" time="0.001" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_inject_long_term_memory" time="0.000" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_inject_idempotent" time="0.000" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_inject_instructions_only" time="0.000" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_inject_memories_only" time="0.000" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_inject_nothing" time="0.000" /><testcase classname="tests.test_memory.TestConversationInjection" name="test_replace_history_resets_ltm" time="0.000" /><testcase classname="tests.test_memory.TestMemoryExtraction" name="test_extraction_prompt_contains_categories" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_rm_rf_root" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_rm_rf_root_no_space" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_mkfs" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_dd_to_device" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_chmod_777_root" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_curl_pipe_bash" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_curl_pipe_sh" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_wget_pipe_bash" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_overwrite_device" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_safe_git_push" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_safe_rm_file" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_safe_npm_test" time="0.000" /><testcase classname="tests.test_permissions.TestDangerousCommandDetector" name="test_safe_ls" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_path_inside_project" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_path_outside_project" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_home_ssh" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_symlink_escape" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_new_file_parent_check" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_temp_dir_allowed" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_relative_path_resolution" time="0.000" /><testcase classname="tests.test_permissions.TestPathSandbox" name="test_deeply_nested_new_dirs" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_parse_rule" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_parse_invalid" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_rule_matches" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_rule_file_pattern" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_extract_content" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_evaluate_single_tier" time="0.001" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_same_tier_last_wins" time="0.001" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_higher_tier_wins" time="0.001" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_missing_file_no_error" time="0.000" /><testcase classname="tests.test_permissions.TestRuleEngine" name="test_append_local_rule" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionMode" name="test_default_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionMode" name="test_accept_edits_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionMode" name="test_plan_mode" time="0.000"><failure message="AssertionError: assert 'ask' == 'deny'&#10;  &#10;  - deny&#10;  + ask">self = &lt;test_permissions.TestPermissionMode object at 0x109df28a0&gt;
+
+    def test_plan_mode(self) -&gt; None:
+        assert mode_decide(PermissionMode.PLAN, "read") == "allow"
+&gt;       assert mode_decide(PermissionMode.PLAN, "write") == "deny"
+E       AssertionError: assert 'ask' == 'deny'
+E         
+E         - deny
+E         + ask
+
+tests/test_permissions.py:264: AssertionError</failure></testcase><testcase classname="tests.test_permissions.TestPermissionMode" name="test_bypass_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionMode" name="test_custom_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_dangerous_command_denied" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_path_outside_sandbox_denied" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_read_tool_allowed_by_default_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_write_tool_asks_in_default_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_bash_asks_in_default_mode" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_plan_mode_denies_write" time="0.000"><failure message="AssertionError: assert 'ask' == 'deny'&#10;  &#10;  - deny&#10;  + ask">self = &lt;test_permissions.TestPermissionChecker object at 0x109e118b0&gt;
+
+    def test_plan_mode_denies_write(self) -&gt; None:
+        from gcode.tools.write_file import WriteFile
+        self.checker.mode = PermissionMode.PLAN
+        tool = WriteFile()
+        d = self.checker.check(tool, {"file_path": str(self.tmpdir / "x.txt"), "content": "hi"})
+&gt;       assert d.effect == "deny"
+E       AssertionError: assert 'ask' == 'deny'
+E         
+E         - deny
+E         + ask
+
+tests/test_permissions.py:330: AssertionError</failure></testcase><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_bypass_mode_allows_all" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_bypass_still_blocks_dangerous" time="0.000" /><testcase classname="tests.test_permissions.TestPermissionChecker" name="test_rule_overrides_mode" time="0.001" /><testcase classname="tests.test_permissions" name="test_e2e_dangerous_command_blocked_loop_continues" time="0.003" /><testcase classname="tests.test_permissions" name="test_e2e_sandbox_blocks_outside_path" time="0.003" /><testcase classname="tests.test_permissions" name="test_e2e_rule_allows_git" time="0.021"><failure message="AssertionError: assert not True&#10; +  where True = ToolResultEvent(tool_id='t1', tool_name='Bash', output='STDERR:\nfatal: not a git repository (or any of the parent directories): .git\n', is_error=True, elapsed=0.01669974997639656).is_error">@pytest.mark.asyncio
+    async def test_e2e_rule_allows_git():
+        """放行 git 命令的规则可以让其无需人工介入（HITL）直接通过。"""
+        tmpdir = Path(tempfile.mkdtemp())
+        rules_file = tmpdir / ".gcode" / "permissions.yaml"
+        rules_file.parent.mkdir(parents=True)
+        rules_file.write_text(yaml.dump([{"rule": "Bash(git *)", "effect": "allow"}]))
+    
+        client = MockLLMClient([
+            [
+                ToolCallComplete("t1", "Bash", {"command": "git status"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=15),
+            ],
+        ])
+        registry = create_default_registry()
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(str(tmpdir)),
+            rule_engine=RuleEngine(project_rules_path=rules_file),
+            mode=PermissionMode.DEFAULT,
+        )
+        agent = Agent(client, registry, "anthropic", work_dir=str(tmpdir), permission_checker=checker)
+        conv = ConversationManager()
+        conv.add_user_message("Show git status")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["tool_result"]) == 1
+&gt;       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='Bash', output='STDERR:\nfatal: not a git repository (or any of the parent directories): .git\n', is_error=True, elapsed=0.01669974997639656).is_error
+
+tests/test_permissions.py:520: AssertionError</failure></testcase><testcase classname="tests.test_permissions" name="test_e2e_default_mode_write_triggers_ask" time="0.003" /><testcase classname="tests.test_permissions" name="test_e2e_bypass_mode_allows_all" time="0.003"><failure message="AssertionError: assert not True&#10; +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=8.074997458606958e-05).is_error">@pytest.mark.asyncio
+    async def test_e2e_bypass_mode_allows_all():
+        """Bypass 模式无需询问，放行一切操作。"""
+        tmpdir = Path(tempfile.mkdtemp())
+        test_file = tmpdir / "existing.txt"
+        test_file.write_text("original")
+    
+        client = MockLLMClient([
+            [
+                ToolCallComplete("t1", "WriteFile", {
+                    "file_path": str(test_file),
+                    "content": "modified",
+                }),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=10),
+            ],
+        ])
+        registry = create_default_registry()
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(str(tmpdir)),
+            rule_engine=RuleEngine(),
+            mode=PermissionMode.BYPASS,
+        )
+        agent = Agent(client, registry, "anthropic", work_dir=str(tmpdir), permission_checker=checker)
+        conv = ConversationManager()
+        conv.add_user_message("Modify the file")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["permission"]) == 0
+        assert len(c["tool_result"]) == 1
+&gt;       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=8.074997458606958e-05).is_error
+
+tests/test_permissions.py:603: AssertionError</failure></testcase><testcase classname="tests.test_permissions" name="test_e2e_user_denies_operation" time="0.002" /><testcase classname="tests.test_recovery" name="test_recovery_attachment_empty_when_nothing_recorded" time="0.000" /><testcase classname="tests.test_recovery" name="test_recovery_attachment_emits_all_sections" time="0.000" /><testcase classname="tests.test_recovery" name="test_recovery_file_limit_and_order" time="0.000" /><testcase classname="tests.test_recovery" name="test_recovery_truncates_per_file" time="0.000" /><testcase classname="tests.test_recovery" name="test_recovery_skills_budget" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_create_returns_empty" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_clone_independent" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_apply_does_not_mutate_conv" time="0.001" /><testcase classname="tests.test_replacement_state" name="test_first_call_freezes_unreplaced" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_replacement_byte_identical" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_frozen_never_replaced" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_aggregate_only_picks_fresh" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_reconstruct_from_records" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_reconstruct_with_inherited_parent" time="0.000" /><testcase classname="tests.test_replacement_state" name="test_append_and_load_records_roundtrip" time="0.001" /><testcase classname="tests.test_serialization" name="test_anthropic_preserves_signed_thinking_at_head" time="0.000" /><testcase classname="tests.test_serialization" name="test_anthropic_tool_results_become_user_blocks" time="0.000" /><testcase classname="tests.test_serialization" name="test_anthropic_merges_system_reminder_into_prev_user" time="0.000" /><testcase classname="tests.test_serialization" name="test_openai_input_tool_use_as_function_call" time="0.000" /><testcase classname="tests.test_serialization" name="test_openai_input_tool_results_as_function_call_output" time="0.000" /><testcase classname="tests.test_serialization" name="test_chat_completion_uses_tool_calls_and_skips_thinking" time="0.000" /><testcase classname="tests.test_serialization" name="test_build_messages_dispatch_by_protocol" time="0.000" /><testcase classname="tests.test_skills.TestParseFrontmatter" name="test_valid" time="0.000" /><testcase classname="tests.test_skills.TestParseFrontmatter" name="test_missing_opening" time="0.000" /><testcase classname="tests.test_skills.TestParseFrontmatter" name="test_unclosed" time="0.000" /><testcase classname="tests.test_skills.TestParseFrontmatter" name="test_invalid_yaml" time="0.000" /><testcase classname="tests.test_skills.TestParseFrontmatter" name="test_non_dict_frontmatter" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_valid_file" time="0.001" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_missing_name" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_missing_description" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_invalid_name_format" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_invalid_mode" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_nonexistent_file" time="0.000" /><testcase classname="tests.test_skills.TestParseSkillFile" name="test_fork_mode_with_context" time="0.000" /><testcase classname="tests.test_skills.TestSubstituteArguments" name="test_with_args" time="0.000" /><testcase classname="tests.test_skills.TestSubstituteArguments" name="test_without_args" time="0.000" /><testcase classname="tests.test_skills.TestSubstituteArguments" name="test_no_placeholder" time="0.000" /><testcase classname="tests.test_skills.TestSubstituteArguments" name="test_multiple_placeholders" time="0.000" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_load_builtins" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_project_overrides_builtin" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_catalog" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_get_returns_skill" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_get_unknown" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_hot_reload" time="0.002" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_hot_reload_fallback_on_error" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_directory_skill_detected" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_source_label" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_malformed_file_skipped" time="0.001" /><testcase classname="tests.test_skills.TestSkillLoader" name="test_reload" time="0.001" /><testcase classname="tests.test_skills.TestFilterToolRegistry" name="test_empty_allowed_returns_original" time="0.000" /><testcase classname="tests.test_skills.TestFilterToolRegistry" name="test_filters_to_allowed" time="0.000" /><testcase classname="tests.test_skills.TestFilterToolRegistry" name="test_system_tools_always_included" time="0.000" /><testcase classname="tests.test_skills.TestFilterToolRegistry" name="test_missing_tool_raises" time="0.000" /><testcase classname="tests.test_skills.TestDirectorySkill" name="test_parse_tool_json" time="0.002" /><testcase classname="tests.test_skills.TestDirectorySkill" name="test_parse_tool_json_single_object" time="0.000" /><testcase classname="tests.test_skills.TestDirectorySkill" name="test_register_skill_tools" time="0.001" /><testcase classname="tests.test_skills.TestDirectorySkill" name="test_register_no_tool_json" time="0.000" /><testcase classname="tests.test_skills.TestDirectorySkill" name="test_custom_tool_execution" time="0.001" /><testcase classname="tests.test_skills.TestLoadSkillTool" name="test_load_existing_skill" time="0.001" /><testcase classname="tests.test_skills.TestLoadSkillTool" name="test_load_unknown_skill" time="0.000" /><testcase classname="tests.test_skills.TestLoadSkillTool" name="test_not_initialized" time="0.000" /><testcase classname="tests.test_skills.TestLoadSkillTool" name="test_is_system_tool" time="0.000" /><testcase classname="tests.test_skills.TestAgentSkillIntegration" name="test_activate_and_clear" time="0.000" /><testcase classname="tests.test_skills.TestAgentSkillIntegration" name="test_empty_active_skills" time="0.000" /><testcase classname="tests.test_skills.TestAgentSkillIntegration" name="test_agent_activate_and_clear" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_valid_agent" time="0.001" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_missing_name" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_missing_description" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_model" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_permission_mode" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_max_turns" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_bad_yaml" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_no_frontmatter" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_disallowed_tools" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_default_values" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_frontmatter_parse" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_valid_permission_modes" time="0.001" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_valid_models" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_load_builtins" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_verification_disabled_by_default" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_verification_enabled" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_project_overrides_builtin" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_get_returns_agent" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_get_unknown_returns_none" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_list_agents" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_hot_reload" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_bad_file_skipped" time="0.001" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_global_disallowed" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_disallowed_tools_in_definition" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_tools_whitelist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_background_whitelist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_combined_whitelist_and_blacklist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_custom_agent_extra_restrictions" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_builtin_no_custom_restrictions" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_basic_fork" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_preserves_history" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_wraps_pending_tool_use" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_no_double_fork" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_is_deep_copy" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_create_node" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_auto_trace_id" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_update_tokens" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_complete" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_tree" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_total_tokens" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_nonexistent" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_update_nonexistent_is_noop" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_complete_nonexistent_is_noop" time="0.000" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_launch_and_complete" time="0.102" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_poll_completed" time="0.102" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_cancel" time="0.304" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_failed_task" time="0.102" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_list_tasks" time="0.103" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_cancel_nonexistent" time="0.001" /><testcase classname="tests.test_subagent.TestNotification" name="test_format_notification" time="0.001" /><testcase classname="tests.test_subagent.TestNotification" name="test_truncate_long_result" time="0.000" /><testcase classname="tests.test_subagent.TestNotification" name="test_inject_notifications" time="0.001" /><testcase classname="tests.test_subagent.TestConfig" name="test_enable_fork_default" time="0.002" /><testcase classname="tests.test_subagent.TestConfig" name="test_enable_fork_true" time="0.002" /><testcase classname="tests.test_subagent.TestPermissionMode" name="test_dont_ask_mode" time="0.000" /><testcase classname="tests.test_subagent.TestAgentToolParams" name="test_required_fields" time="0.000" /><testcase classname="tests.test_subagent.TestAgentToolParams" name="test_optional_fields" time="0.000" /><testcase classname="tests.test_subagent.TestAgentExtensions" name="test_agent_has_id" time="0.000" /><testcase classname="tests.test_subagent.TestAgentExtensions" name="test_agent_catalog" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_teammate_info_roundtrip" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_agent_team_save_load" time="0.001" /><testcase classname="tests.test_teams.TestModels" name="test_get_member" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_remove_member" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_set_member_active" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_all_idle" time="0.000" /><testcase classname="tests.test_teams.TestModels" name="test_unique_team_name" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestModels object at 0x109eeee40&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmpaia0sjr8'
+
+    def test_unique_team_name(self, tmp_dir):
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_create_and_get" time="0.003" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_auto_increment_id" time="0.001" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_list_with_filters" time="0.001" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_update_with_dependencies" time="0.001" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_update_nonexistent_returns_none" time="0.000" /><testcase classname="tests.test_teams.TestSharedTaskStore" name="test_persistence" time="0.001" /><testcase classname="tests.test_teams.TestMailbox" name="test_write_and_consume" time="0.055" /><testcase classname="tests.test_teams.TestMailbox" name="test_read_without_consume" time="0.001" /><testcase classname="tests.test_teams.TestMailbox" name="test_broadcast" time="0.001" /><testcase classname="tests.test_teams.TestMailbox" name="test_cleanup" time="0.000" /><testcase classname="tests.test_teams.TestMailbox" name="test_empty_mailbox" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_register_and_resolve" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_unregister" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_list_all" time="0.000" /><testcase classname="tests.test_teams.TestAgentNameRegistry" name="test_singleton" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_in_process_mode" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_non_interactive" time="0.000" /><testcase classname="tests.test_teams.TestBackendDetect" name="test_tmux_session" time="0.000"><failure message="AssertionError: assert &lt;BackendType.... 'in-process'&gt; == &lt;BackendType.TMUX: 'tmux'&gt;&#10;  &#10;  - tmux&#10;  + in-process">self = &lt;test_teams.TestBackendDetect object at 0x109f18ce0&gt;
+
+    def test_tmux_session(self):
+        with patch.dict(os.environ, {"TMUX": "/tmp/tmux-1234/default,12345,0"}):
+            result = detect_backend()
+&gt;           assert result == BackendType.TMUX
+E           AssertionError: assert &lt;BackendType.... 'in-process'&gt; == &lt;BackendType.TMUX: 'tmux'&gt;
+E             
+E             - tmux
+E             + in-process
+
+tests/test_teams.py:348: AssertionError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_iterm2_with_it2" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x109f18fb0&gt;
+
+    def test_iterm2_with_it2(self):
+        env = {"TERM_PROGRAM": "iTerm.app"}
+        with patch.dict(os.environ, env, clear=False):
+&gt;           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:353: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_tmux_installed_not_in_session" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x109eeffe0&gt;
+
+    def test_tmux_installed_not_in_session(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+&gt;           with patch("GCode.teams.backend_detect.shutil.which") as mock_which:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:370: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestBackendDetect" name="test_no_backend_raises" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestBackendDetect object at 0x109eefad0&gt;
+
+    def test_no_backend_raises(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            os.environ.pop("TERM_PROGRAM", None)
+&gt;           with patch("GCode.teams.backend_detect.shutil.which", return_value=None):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:379: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestToolFilter" name="test_teammate_coordination_tools_in_allowed" time="0.000" /><testcase classname="tests.test_teams.TestToolFilter" name="test_coordinator_mode_tools" time="0.000" /><testcase classname="tests.test_teams.TestToolFilter" name="test_apply_coordinator_filter" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_disabled_by_default" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_enabled_with_flag_and_env" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_flag_without_env" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_env_without_flag" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_contains_phases" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_anti_pattern" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_continue_vs_spawn" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_system_prompt_task_notification" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_no_switch" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_switch_to_coordinator" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_match_session_mode_none" time="0.000" /><testcase classname="tests.test_teams.TestCoordinatorMode" name="test_coordinator_user_context" time="0.000" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_teammate_mode_defaults" time="0.000" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_load_config_with_team_fields" time="0.001" /><testcase classname="tests.test_teams.TestConfigExtensions" name="test_invalid_teammate_mode" time="0.001" /><testcase classname="tests.test_teams.TestTranscript" name="test_save_and_load" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestTranscript object at 0x109eed880&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmpjztc14ba'
+
+    def test_save_and_load(self, tmp_dir):
+        from gcode.conversation import ConversationManager
+        from gcode.teams.transcript import load_transcript, save_transcript
+    
+        conv = ConversationManager()
+        conv.add_user_message("Hello agent")
+        conv.add_assistant_message("Hello user")
+    
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:534: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestTranscript" name="test_load_nonexistent" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_teams.TestTranscript object at 0x109f19f70&gt;
+tmp_dir = '/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/tmpiqpcwinc'
+
+    def test_load_nonexistent(self, tmp_dir):
+        from gcode.teams.transcript import load_transcript
+&gt;       with patch("GCode.teams.models.Path.home", return_value=Path(tmp_dir)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_teams.py:546: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<HOME>/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1002140e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_normal_prompt" time="0.000"><failure message="ImportError: cannot import name 'BASE_PERSONA' from 'gcode.prompts' (<WORKSPACE>/work/dev/gcode-baseline/gcode/prompts.py)">self = &lt;test_teams.TestAgentCoordinatorIntegration object at 0x109f19d30&gt;
+
+    def test_normal_prompt(self):
+&gt;       from gcode.prompts import build_system_prompt, BASE_PERSONA
+E       ImportError: cannot import name 'BASE_PERSONA' from 'gcode.prompts' (<WORKSPACE>/work/dev/gcode-baseline/gcode/prompts.py)
+
+tests/test_teams.py:556: ImportError</failure></testcase><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_coordinator_prompt" time="0.000" /><testcase classname="tests.test_teams.TestAgentCoordinatorIntegration" name="test_coordinator_overrides_plan" time="0.000"><failure message="ImportError: cannot import name 'PLAN_MODE_INSTRUCTIONS' from 'gcode.prompts' (<WORKSPACE>/work/dev/gcode-baseline/gcode/prompts.py)">self = &lt;test_teams.TestAgentCoordinatorIntegration object at 0x109f194c0&gt;
+
+    def test_coordinator_overrides_plan(self):
+&gt;       from gcode.prompts import build_system_prompt, PLAN_MODE_INSTRUCTIONS
+E       ImportError: cannot import name 'PLAN_MODE_INSTRUCTIONS' from 'gcode.prompts' (<WORKSPACE>/work/dev/gcode-baseline/gcode/prompts.py)
+
+tests/test_teams.py:568: ImportError</failure></testcase><testcase classname="tests.test_tool_search" name="test_should_defer_default_false" time="0.000" /><testcase classname="tests.test_tool_search" name="test_mcp_tool_deferred" time="0.000" /><testcase classname="tests.test_tool_search" name="test_deferred_not_in_schemas" time="0.000" /><testcase classname="tests.test_tool_search" name="test_tool_search_marks_discovered" time="0.001" /><testcase classname="tests.test_tool_search" name="test_discovered_in_schemas" time="0.000" /><testcase classname="tests.test_tool_search" name="test_get_deferred_tool_names" time="0.000" /><testcase classname="tests.test_tool_search" name="test_tool_search_keyword" time="0.000" /><testcase classname="tests.test_tool_search" name="test_tool_search_no_match" time="0.000" /><testcase classname="tests.test_tool_search" name="test_tool_search_select_multiple" time="0.000" /><testcase classname="tests.test_tool_search" name="test_deferred_token_savings" time="0.009" /><testcase classname="tests.test_tool_search" name="test_deferred_end_to_end_discovery" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_simple" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_with_dots" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_nested" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_single_char" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_valid_underscores" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_empty" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_too_long" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_path_traversal" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_dot_segment" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_dot_only" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_spaces" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_special_chars" time="0.000" /><testcase classname="tests.test_worktree.TestValidateSlug" name="test_empty_segment" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_no_slash" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_with_slash" time="0.000" /><testcase classname="tests.test_worktree.TestFlattenSlug" name="test_multiple_slashes" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_put_and_get" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_miss" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_invalidate" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_clear" time="0.000" /><testcase classname="tests.test_worktree.TestFileCache" name="test_invalidate_nonexistent" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_defaults" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_load_config_without_worktree_section" time="0.001" /><testcase classname="tests.test_worktree.TestWorktreeConfig" name="test_load_config_with_worktree_section" time="0.001" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_save_and_load" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_save_none_clears" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_load_missing_file" time="0.000" /><testcase classname="tests.test_worktree.TestSessionPersistence" name="test_load_corrupt_json" time="0.000" /><testcase classname="tests.test_worktree.TestIntegrationHelpers" name="test_generate_worktree_name" time="0.000" /><testcase classname="tests.test_worktree.TestIntegrationHelpers" name="test_build_worktree_notice" time="0.000" /><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create" time="0.086"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_create0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_invalid_slug" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_create_invalid_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_duplicate" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_create_duplicate0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_create_nested_slug" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_create_nested_slug0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_fast_recovery" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_fast_recovery0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_and_session" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_enter_and_session0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_clears_cache" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_enter_clears_cache0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_keep" time="0.082"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_exit_keep0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_remove_clean" time="0.082"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_exit_remove_clean0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_exit_remove_with_changes_blocked" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_exit_remove_with_changes_0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_list_worktrees" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_list_worktrees0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestWorktreeManager" name="test_enter_nonexistent" time="0.086"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_enter_nonexistent0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_clean_worktree" time="0.082"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_clean_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_uncommitted_changes" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_uncommitted_changes0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_new_commits" time="0.082"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_new_commits0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_auto_cleanup_removes_clean" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_auto_cleanup_removes_clea0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestChangeDetection" name="test_auto_cleanup_keeps_dirty" time="0.083"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_auto_cleanup_keeps_dirty0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_valid_worktree" time="0.084"><error message="failed on setup with &quot;TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'&quot;">git_repo = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-60/test_valid_worktree0/repo')
+
+    @pytest.fixture
+    def manager(git_repo):
+        cache = FileCache()
+&gt;       return WorktreeManager(
+            repo_root=str(git_repo),
+            file_cache=cache,
+            symlink_directories=[],
+        )
+E       TypeError: WorktreeManager.__init__() got an unexpected keyword argument 'file_cache'
+
+tests/test_worktree.py:235: TypeError</error></testcase><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_nonexistent_dir" time="0.000" /><testcase classname="tests.test_worktree.TestReadWorktreeHeadSha" name="test_not_a_worktree" time="0.001" /></testsuite></testsuites>

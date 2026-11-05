@@ -28,7 +28,6 @@ class Rule:
     pattern: str
     effect: Effect
 
-
     def matches(self, tool_name: str, content: str) -> bool:
         if self.tool_name != tool_name:
             return False
@@ -74,8 +73,6 @@ def _load_rules_file(path: Path) -> list[Rule]:
 
 
 class RuleEngine:
-
-
     def __init__(
         self,
         user_rules_path: Path | None = None,
@@ -92,7 +89,6 @@ class RuleEngine:
             tiers.append(_load_rules_file(p) if p else [])
         return tiers
 
-
     def evaluate(self, tool_name: str, content: str) -> Effect | None:
         for rules in self._load_tiers():
             for rule in reversed(rules):
@@ -100,12 +96,44 @@ class RuleEngine:
                     return rule.effect
         return None
 
-
     def append_local_rule(self, rule: Rule) -> None:
         if self._local_path is None:
             return
         self._local_path.parent.mkdir(parents=True, exist_ok=True)
         existing = _load_rules_file(self._local_path)
         existing.append(rule)
-        entries = [{"rule": f"{r.tool_name}({r.pattern})", "effect": r.effect} for r in existing]
-        self._local_path.write_text(yaml.dump(entries, allow_unicode=True), encoding="utf-8")
+        entries = [
+            {"rule": f"{r.tool_name}({r.pattern})", "effect": r.effect}
+            for r in existing
+        ]
+        self._local_path.write_text(
+            yaml.dump(entries, allow_unicode=True), encoding="utf-8"
+        )
+
+
+class ScopedRuleView:
+    """Evaluate inherited path rules in both child and parent coordinate systems."""
+
+    def __init__(self, base, child_root, parent_root):
+        self.base = base
+        self.child_root = Path(child_root).resolve()
+        self.parent_root = Path(parent_root).resolve()
+
+    def evaluate(self, tool_name: str, content: str) -> Effect | None:
+        original = self.base.evaluate(tool_name, content)
+        mapped = None
+        if tool_name in ("ReadFile", "WriteFile", "EditFile") and content:
+            path = Path(content).expanduser()
+            if not path.is_absolute():
+                path = self.child_root / path
+            try:
+                relative = path.resolve().relative_to(self.child_root)
+                mapped = self.base.evaluate(tool_name, str(self.parent_root / relative))
+            except (ValueError, OSError):
+                pass
+        if original == "deny" or mapped == "deny":
+            return "deny"
+        return mapped or original
+
+    def append_local_rule(self, rule: Rule) -> None:
+        raise PermissionError("child cannot modify inherited permission rules")

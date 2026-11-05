@@ -1,0 +1,10 @@
+{
+  "compaction_committed": false,
+  "summary_has_required_sections": false,
+  "previous_assistant_result_in_projection": true,
+  "previous_assistant_result_in_checkpoint": null,
+  "summary": "All good.",
+  "before": "022eb6b954a9d54060856a51a42fc7a76ba423dfca480326a4087db52c94993a",
+  "after": "022eb6b954a9d54060856a51a42fc7a76ba423dfca480326a4087db52c94993a",
+  "scope": "synthetic provider and conversation, no external model"
+}

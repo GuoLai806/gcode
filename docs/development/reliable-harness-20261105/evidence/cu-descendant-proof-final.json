@@ -1,0 +1,9 @@
+{
+  "write_receipt": "delivery_unknown",
+  "sidecar_exited": true,
+  "synthetic_descendant_alive_after_shutdown": false,
+  "owned_descendant_cleaned": false,
+  "before": "c86d557dfba0a3b6a89e17df9ae19cdd202aff369686b54da12fa9c01386c94d",
+  "after": "c86d557dfba0a3b6a89e17df9ae19cdd202aff369686b54da12fa9c01386c94d",
+  "scope": "synthetic Node child only; no GUI/native; cleanup verifies unique owned command before signalling"
+}

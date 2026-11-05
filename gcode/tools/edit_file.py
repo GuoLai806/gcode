@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from gcode.tools.base import Tool, ToolResult
+from gcode.runtime.context import resolve_tool_path
 
 if TYPE_CHECKING:
     from gcode.cache import FileCache
@@ -14,7 +15,9 @@ if TYPE_CHECKING:
 
 class Params(BaseModel):
     file_path: str = Field(description="Path to the file to edit")
-    old_string: str = Field(description="The exact string to find and replace (must be unique in file)")
+    old_string: str = Field(
+        description="The exact string to find and replace (must be unique in file)"
+    )
     new_string: str = Field(description="The replacement string")
 
 
@@ -27,20 +30,25 @@ class EditFile(Tool):
     params_model = Params
     category = "write"
 
-
-    def __init__(self, file_cache: FileCache | None = None, file_history: Any = None, file_state_cache: FileStateCache | None = None) -> None:
+    def __init__(
+        self,
+        file_cache: FileCache | None = None,
+        file_history: Any = None,
+        file_state_cache: FileStateCache | None = None,
+    ) -> None:
         self._cache = file_cache
         self.file_history = file_history
         self._state_cache = file_state_cache
 
-
     async def execute(self, params: Params) -> ToolResult:
         if self.file_history is not None:
-            self.file_history.track_edit(params.file_path)
+            self.file_history.track_edit(str(resolve_tool_path(params.file_path)))
 
-        path = Path(params.file_path)
+        path = resolve_tool_path(params.file_path)
         if not path.exists():
-            return ToolResult(output=f"Error: file not found: {params.file_path}", is_error=True)
+            return ToolResult(
+                output=f"Error: file not found: {params.file_path}", is_error=True
+            )
 
         if self._state_cache:
             resolved = str(path.resolve())
@@ -55,7 +63,9 @@ class EditFile(Tool):
 
         count = content.count(params.old_string)
         if count == 0:
-            return ToolResult(output="Error: old_string not found in file", is_error=True)
+            return ToolResult(
+                output="Error: old_string not found in file", is_error=True
+            )
         if count > 1:
             return ToolResult(
                 output=f"Error: old_string found {count} times, must be unique",

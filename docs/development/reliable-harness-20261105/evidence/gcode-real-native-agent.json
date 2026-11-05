@@ -1,0 +1,51 @@
+{
+  "kind": "real configured Deepseek model through Agent+CUBootstrap+P11.2 native readonly",
+  "model": "deepseek-flash",
+  "stop_reason": "completed",
+  "tool_names": [
+    "ax_observe",
+    "ax_query"
+  ],
+  "tool_errors": 0,
+  "native_target_independently_in_receipt": true,
+  "answer_contains_exact_target": true,
+  "writes_exposed": false,
+  "writes_requested": 0,
+  "wall_ms": 6201.567166019231,
+  "usage": {
+    "scope": "9b1b57abb0184b518196ab110788849e",
+    "max_total": 150000,
+    "prompt_uncached": 5205,
+    "output": 383,
+    "cache_read": 12928,
+    "cache_write": 0,
+    "revision": 3,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 18516,
+    "remaining": 131484,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "identity": {
+    "protocol": 1,
+    "platform": "darwin",
+    "provider_sha256": "0c84a38818f07d51c6e10a94a1ae8d04a6f05bb1b74984d860f9a5ee6973dacd",
+    "bridge_sha256": "ff4b4fb7ed6012b968604f56b9d60ad28c390d39aa619102a25852945bd20c7b",
+    "native_sha256": "95a1fd5ca0c3871fd99bbd9b0ed2f8f16228b8b646017767b7f45675b9e82b38",
+    "keyboard_sha256": null,
+    "sdk_package_sha256": "248decde30021109984def7ddc8f7bf4caf21ef04910a1303ab19604206c1bd5",
+    "manifest_verified": true,
+    "manifest_sha256": "2b3f43154b8c80127d935810f11655abffe409c2bd0ecf6cd1a2a3604bad1696",
+    "manifest_entry_count": 23,
+    "manifest_entries_sha256": "1500741faa46ce2894e62ff7e9d905004327407260bcc8ff38fa3eb56464609b",
+    "server_sha256": "283da385e9b497c6efd0c2a40c6de753ae50d2d6aab6b362324b09bc48d9aee7",
+    "node_sha256": "d23e520f5bcd497bdd0c6a6242356a4fd255abaceba7c3549727caacb936ddae",
+    "schema_sha256": "350d16ab88d9470c7964db8ca9c9e79e8b0e2b8326748ffbd76197885ed35cae"
+  },
+  "private_raw_sha256": "3d3670413270c9c5d46dba300bc041973ef32eac01bd31c18d656d33c3ff78ff",
+  "limitations": [
+    "one readonly task; not cross-app reliability or speed benchmark"
+  ]
+}

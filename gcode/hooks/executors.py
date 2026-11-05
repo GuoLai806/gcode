@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 from gcode.hooks.models import Action, ActionResult, HookContext
+from gcode.tools.bash import Bash
 
 log = logging.getLogger(__name__)
 
@@ -13,24 +14,38 @@ log = logging.getLogger(__name__)
 async def execute_command(action: Action, ctx: HookContext) -> ActionResult:
     command = ctx.expand(action.command)
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+        creation = asyncio.create_task(
+            asyncio.create_subprocess_shell(
+                command,
+                cwd=ctx.cwd or None,
+                start_new_session=True,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
         )
+        proc = await asyncio.shield(creation)
         try:
             stdout, _ = await asyncio.wait_for(
                 proc.communicate(), timeout=action.timeout
             )
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await Bash._stop_process(proc)
             return ActionResult(
                 output=f"Command timed out after {action.timeout}s: {command}",
                 success=False,
             )
         output = stdout.decode(errors="replace").strip() if stdout else ""
         return ActionResult(output=output, success=proc.returncode == 0)
+    except asyncio.CancelledError:
+        if "proc" not in locals() and "creation" in locals():
+            try:
+                proc = await Bash._finish_cleanup(creation)
+            except Exception:
+                pass
+        if "proc" in locals():
+            cleanup = asyncio.create_task(Bash._stop_process(proc))
+            await Bash._finish_cleanup(cleanup)
+        raise
     except Exception as e:
         return ActionResult(output=f"Command execution error: {e}", success=False)
 
@@ -50,7 +65,6 @@ async def execute_http(action: Action, ctx: HookContext) -> ActionResult:
         headers[k] = ctx.expand(v)
     if body and "Content-Type" not in headers:
         headers["Content-Type"] = "application/json"
-
 
     def _do_request() -> ActionResult:
         try:

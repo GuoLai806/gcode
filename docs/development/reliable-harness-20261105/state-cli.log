@@ -1,0 +1,104 @@
+<WORKSPACE>/work/dev/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:300: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+..........F...                                                           [100%]
+=================================== FAILURES ===================================
+________________ test_headless_entry_uses_durable_session_scope ________________
+
+tmp_path = PosixPath('/private/var/folders/lt/wg99779n3xzd_zth2zx9sbth0000gn/T/pytest-of-keji/pytest-170/test_headless_entry_uses_durab0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bd182c0>
+capsys = <_pytest.capture.CaptureFixture object at 0x10bd4d3d0>
+
+    @pytest.mark.asyncio
+    async def test_headless_entry_uses_durable_session_scope(tmp_path, monkeypatch, capsys):
+        from gcode.__main__ import _run_prompt
+        from gcode.permissions import PermissionMode
+        import gcode.client, gcode.agents.task_manager
+        created=[]; seen=[]
+        class CapturingManager(TaskManager):
+            def __init__(self,*args,**kwargs): super().__init__(*args,**kwargs); created.append(self)
+        async def context(provider): return None
+        async def run(self,prompt,conversation):
+            seen.append((self.session_id,self.token_budget.max_total_tokens)); self.last_stop_reason='completed'; return 'ok'
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(gcode.client,'create_client',lambda provider: MagicMock())
+        monkeypatch.setattr(gcode.client,'resolve_context_window',context)
+        monkeypatch.setattr(gcode.agents.task_manager,'TaskManager',CapturingManager)
+        monkeypatch.setattr(Agent,'run_to_completion',run)
+        provider=SimpleNamespace(protocol='anthropic',get_context_window=lambda: 10000)
+        config=SimpleNamespace(providers=[provider],worktree=None,enable_verification_agent=False,enable_fork=False,enable_coordinator_mode=False)
+>       await _run_prompt(config,PermissionMode.DONT_ASK,None,'hello',137)
+
+<WORKSPACE>/work/research/gcode/tests/test_spawn_integration.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+config = namespace(providers=[namespace(protocol='anthropic', get_context_window=<function test_headless_entry_uses_durable_ses...a> at 0x10bd30900>)], worktree=None, enable_verification_agent=False, enable_fork=False, enable_coordinator_mode=False)
+permission_mode = <PermissionMode.DONT_ASK: 'dontAsk'>, hook_engine = None
+prompt = 'hello', max_total_tokens = 137
+
+    async def _run_prompt(config, permission_mode, hook_engine, prompt: str, max_total_tokens: int = 1_000_000) -> None:
+        from gcode.agent import Agent
+        from gcode.client import create_client, resolve_context_window
+        from gcode.conversation import ConversationManager
+        from gcode.memory.instructions import load_instructions
+        from gcode.memory.session import SessionManager
+        from gcode.permissions import (
+            DangerousCommandDetector,
+            PathSandbox,
+            PermissionChecker,
+            RuleEngine,
+        )
+        from gcode.tools import create_default_registry
+        from gcode.agents.loader import AgentLoader
+        from gcode.agents.task_manager import TaskManager
+        from gcode.agents.trace import TraceManager
+        from gcode.tools.agent_tool import AgentTool
+        from gcode.tools.impl.tool_search import ToolSearchTool
+        from gcode.teams.manager import TeamManager
+        from gcode.teams.models import BackendType
+        from gcode.tools.team_create import TeamCreateTool
+        from gcode.tools.team_delete import TeamDeleteTool
+        from gcode.worktree import WorktreeManager
+        from gcode.config import WorktreeConfig
+    
+        provider = config.providers[0]
+        client = create_client(provider)
+        # 第 2 层：尽力从 provider 自动拉取模型的 context window（缓存在 provider 上）。
+        # 不会抛异常或阻塞启动；失败则退化到映射表。
+        await resolve_context_window(provider)
+        work_dir = os.getcwd()
+        home = Path.home()
+    
+        checker = PermissionChecker(
+            detector=DangerousCommandDetector(),
+            sandbox=PathSandbox(work_dir),
+            rule_engine=RuleEngine(
+                user_rules_path=home / ".gcode" / "permissions.yaml",
+                project_rules_path=Path(work_dir) / ".gcode" / "permissions.yaml",
+                local_rules_path=Path(work_dir) / ".gcode" / "permissions.local.yaml",
+            ),
+            mode=permission_mode,
+        )
+    
+        instructions = load_instructions(work_dir)
+        registry = create_default_registry()
+        registry.register(ToolSearchTool(registry, protocol=provider.protocol))
+    
+>       agent = Agent(
+            client=client,
+            registry=registry,
+            protocol=provider.protocol,
+            work_dir=work_dir,
+            permission_checker=checker,
+            context_window=provider.get_context_window(),
+            instructions_content=instructions,
+            hook_engine=hook_engine,
+            max_total_tokens=max_total_tokens,
+        )
+E       TypeError: Agent.__init__() got an unexpected keyword argument 'max_total_tokens'
+
+<WORKSPACE>/work/research/gcode/gcode/__main__.py:142: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_spawn_integration.py::test_headless_entry_uses_durable_session_scope
+1 failed, 13 passed in 1.08s

@@ -51,11 +51,13 @@ def _mark_last_user_tail_for_cache(messages: list[dict[str, Any]]) -> None:
         content = msg.get("content")
         if isinstance(content, str):
             # 把字符串 content 升级为 block 形式，以便附加 cache_control。
-            msg["content"] = [{
-                "type": "text",
-                "text": content,
-                "cache_control": _EPHEMERAL,
-            }]
+            msg["content"] = [
+                {
+                    "type": "text",
+                    "text": content,
+                    "cache_control": _EPHEMERAL,
+                }
+            ]
         elif isinstance(content, list) and content:
             last = content[-1]
             if isinstance(last, dict):
@@ -88,8 +90,6 @@ class AuthenticationError(LLMError):
 
 
 class RateLimitError(LLMError):
-
-
     def __init__(self, message: str, retry_after: float | None = None):
         super().__init__(message)
         self.retry_after = retry_after
@@ -100,6 +100,19 @@ class NetworkError(LLMError):
 
 
 class LLMClient(ABC):
+    def with_output_limit(self, tokens: int) -> LLMClient:
+        """A request-scoped SDK view; never mutate a sibling run's budget."""
+        if tokens <= 0:
+            raise ValueError("output token limit must be positive")
+        if hasattr(self, "_client") and hasattr(self, "max_output_tokens"):
+            import copy
+
+            view = copy.copy(self)
+            view.max_output_tokens = tokens
+            return view
+        # Custom deterministic providers may have no adjustable output limit.
+        return self
+
     @abstractmethod
     async def stream(
         self,
@@ -116,7 +129,7 @@ class LLMClient(ABC):
 def _supports_adaptive_thinking(model: str) -> bool:
     for family in ("claude-opus-4-", "claude-sonnet-4-"):
         if model.startswith(family):
-            rest = model[len(family):]
+            rest = model[len(family) :]
             if rest and rest[0].isdigit() and int(rest[0]) >= 6:
                 return True
     return False
@@ -133,7 +146,9 @@ class AnthropicClient(LLMClient):
                 "Anthropic API key not found. "
                 "Set it in .gcode/config.yaml or via ANTHROPIC_API_KEY env var."
             )
-        self._client = AsyncAnthropic(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncAnthropic(
+            api_key=api_key, base_url=config.base_url, max_retries=0, timeout=60.0
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens
@@ -181,11 +196,13 @@ class AnthropicClient(LLMClient):
             "messages": messages,
         }
         if system:
-            kwargs["system"] = [{
-                "type": "text",
-                "text": system,
-                "cache_control": {"type": "ephemeral"},
-            }]
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         if tools:
             kwargs["tools"] = _mark_last_tool_for_cache(tools)
 
@@ -264,9 +281,8 @@ class AnthropicClient(LLMClient):
                     input_tokens=usage.input_tokens,
                     output_tokens=usage.output_tokens,
                     cache_read=getattr(usage, "cache_read_input_tokens", 0) or 0,
-                    cache_creation=getattr(
-                        usage, "cache_creation_input_tokens", 0
-                    ) or 0,
+                    cache_creation=getattr(usage, "cache_creation_input_tokens", 0)
+                    or 0,
                 )
 
         except _anthropic.AuthenticationError as e:
@@ -293,7 +309,9 @@ class OpenAIClient(LLMClient):
                 "OpenAI API key not found. "
                 "Set it in .gcode/config.yaml or via OPENAI_API_KEY env var."
             )
-        self._client = AsyncOpenAI(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncOpenAI(
+            api_key=api_key, base_url=config.base_url, max_retries=0, timeout=60.0
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens
@@ -417,7 +435,9 @@ class OpenAICompatClient(LLMClient):
                 "OpenAI-compatible API key not found. "
                 "Set it in .gcode/config.yaml or via OPENAI_API_KEY env var."
             )
-        self._client = AsyncOpenAI(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncOpenAI(
+            api_key=api_key, base_url=config.base_url, max_retries=0, timeout=60.0
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens
@@ -439,14 +459,16 @@ class OpenAICompatClient(LLMClient):
         """
         converted: list[dict[str, Any]] = []
         for t in tools:
-            converted.append({
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t.get("description", ""),
-                    "parameters": t.get("parameters", t.get("input_schema", {})),
-                },
-            })
+            converted.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("parameters", t.get("input_schema", {})),
+                    },
+                }
+            )
         return converted
 
     async def stream(
@@ -478,31 +500,37 @@ class OpenAICompatClient(LLMClient):
         # tool_calls 列表中的位置索引下发 delta，我们按索引跟踪每个进行中的调用。
         active_calls: dict[int, dict[str, str]] = {}  # 索引 -> {id, name, args}
 
+        finish_reason = "error"
+        final_usage: dict[str, int] = {}
         try:
             response = await self._client.chat.completions.create(**kwargs)
             async for chunk in response:
+                # Compatible providers may put usage on a finishing choice
+                # chunk rather than an empty trailing chunk. Meter either form.
+                if chunk.usage:
+                    details = getattr(chunk.usage, "prompt_tokens_details", None)
+                    cache_read = (
+                        getattr(details, "cached_tokens", 0)
+                        or getattr(chunk.usage, "prompt_cache_hit_tokens", 0)
+                        or 0
+                    )
+                    prompt_tokens = chunk.usage.prompt_tokens or 0
+                    final_usage = dict(
+                        input_tokens=max(prompt_tokens - cache_read, 0),
+                        output_tokens=chunk.usage.completion_tokens or 0,
+                        cache_read=cache_read,
+                        cache_creation=0,
+                    )
                 if not chunk.choices:
-                    # 最后一个 chunk，只包含 usage 数据。
-                    if chunk.usage:
-                        # 部分兼容 provider 通过 prompt_tokens_details.cached_tokens
-                        # 上报 cache 命中数，大多数不上报（cache_read 保持 0）。
-                        # prompt_tokens 包含了缓存 token，需要减去以保持
-                        # input + cache_read 可加性。没有 provider 上报 creation 计数。
-                        details = getattr(
-                            chunk.usage, "prompt_tokens_details", None
-                        )
-                        cache_read = getattr(details, "cached_tokens", 0) or 0
-                        prompt_tokens = chunk.usage.prompt_tokens or 0
-                        yield StreamEnd(
-                            stop_reason="end_turn",
-                            input_tokens=max(prompt_tokens - cache_read, 0),
-                            output_tokens=chunk.usage.completion_tokens or 0,
-                            cache_read=cache_read,
-                            cache_creation=0,
-                        )
                     continue
 
                 choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = {
+                        "length": "max_tokens",
+                        "stop": "end_turn",
+                        "tool_calls": "tool_use",
+                    }.get(choice.finish_reason, choice.finish_reason)
                 delta = choice.delta
 
                 # --- 文本内容 ---
@@ -543,6 +571,10 @@ class OpenAICompatClient(LLMClient):
                                 arguments=args,
                             )
                         active_calls.clear()
+
+            yield StreamEnd(
+                stop_reason=finish_reason, usage_valid=bool(final_usage), **final_usage
+            )
 
         except _openai.AuthenticationError as e:
             raise AuthenticationError(f"Invalid API key: {e}") from e

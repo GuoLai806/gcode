@@ -8,14 +8,12 @@ async def handle_compact(ctx: CommandContext) -> None:
         ctx.ui.add_system_message("Agent 未初始化")
         return
 
-
     input_tokens, _ = ctx.ui.get_token_count()
     if input_tokens < 5000:
         ctx.ui.add_system_message(f"当前 token 数 {input_tokens:,}，无需压缩")
         return
 
     from gcode.agent import CompactNotification, ErrorEvent
-
 
     result = await ctx.agent.manual_compact(ctx.conversation)
     if isinstance(result, CompactNotification):
@@ -26,7 +24,12 @@ async def handle_compact(ctx: CommandContext) -> None:
             from gcode.memory.session import make_compact_boundary
 
             ctx.session.append_record(
-                make_compact_boundary(result.boundary.summary, result.boundary.keep)
+                make_compact_boundary(
+                    result.boundary.summary,
+                    result.boundary.keep,
+                    result.boundary.preserved_constraints,
+                    result.boundary.notification_ids,
+                )
             )
         ctx.ui.add_system_message(result.message)
     elif isinstance(result, ErrorEvent):
@@ -41,4 +44,3 @@ COMPACT_COMMAND = Command(
     type=CommandType.LOCAL,
     handler=handle_compact,
 )
-

@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="162" time="1.673" timestamp="2026-11-05T23:40:55.361389+08:00" hostname="redacted"><testcase classname="tests.test_agent" name="test_single_step_tool_call" time="0.004" /><testcase classname="tests.test_agent" name="test_multi_step_autonomous" time="0.003"><failure message="AssertionError: assert not True&#10; +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=3.454199759289622e-05).is_error">@pytest.mark.asyncio
+    async def test_multi_step_autonomous():
+        """Agent 先 WriteFile 再 ReadFile 然后停止 —— 端到端的多步流程。"""
+        client = MockLLMClient([
+            # 第 1 轮：WriteFile
+            [
+                TextDelta("Creating file."),
+                ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/GCode_test_hello.txt", "content": "Hello World"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：ReadFile 进行验证
+            [
+                TextDelta("Verifying content."),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/GCode_test_hello.txt"}),
+                StreamEnd("end_turn", input_tokens=40, output_tokens=25),
+            ],
+            # 第 3 轮：最终答案
+            [
+                TextDelta("File created and verified. Content is correct."),
+                StreamEnd("end_turn", input_tokens=60, output_tokens=30),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir="/tmp")
+        conv = ConversationManager()
+        conv.add_user_message("Create hello.txt with Hello World, then verify")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        c = _collect(events)
+        assert len(c["tool_use"]) == 2
+        assert c["tool_use"][0].tool_name == "WriteFile"
+        assert c["tool_use"][1].tool_name == "ReadFile"
+        assert len(c["turn"]) == 2
+        assert len(c["loop"]) == 1
+        assert c["loop"][0].total_turns == 3
+        # 验证文件确实被创建了
+&gt;       assert not c["tool_result"][0].is_error
+E       AssertionError: assert not True
+E        +  where True = ToolResultEvent(tool_id='t1', tool_name='WriteFile', output='Error: file has not been read yet. Read it first before editing.', is_error=True, elapsed=3.454199759289622e-05).is_error
+
+tests/test_agent.py:159: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_stop_end_turn" time="0.001" /><testcase classname="tests.test_agent" name="test_stop_max_iterations" time="0.002" /><testcase classname="tests.test_agent" name="test_stop_cancel" time="0.151" /><testcase classname="tests.test_agent" name="test_stop_consecutive_unknown_tools" time="0.005" /><testcase classname="tests.test_agent" name="test_message_splicing" time="0.004"><failure message="assert 4 == 5&#10; +  where 4 = len([{'role': 'user', 'content': 'Current working directory: .\nOperating system: Darwin 25.6.0\nCurrent time: 2026-11-05 ...st&gt;=9.0.3&quot;,\n29\t    &quot;pytest-asyncio&gt;=1.3.0&quot;,\n30\t]', 'is_error': False}]}, {'role': 'assistant', 'content': 'Done.'}])">@pytest.mark.asyncio
+    async def test_message_splicing():
+        """assistant 消息包含 text + 多个 tool_use；对应的 tool_result 被打包在一起。"""
+        client = MockLLMClient([
+            # 第 1 轮：一个响应里包含两次工具调用
+            [
+                TextDelta("Reading two files."),
+                ToolCallComplete("t1", "ReadFile", {"file_path": "README.md"}),
+                ToolCallComplete("t2", "ReadFile", {"file_path": "pyproject.toml"}),
+                StreamEnd("end_turn", input_tokens=10, output_tokens=20),
+            ],
+            # 第 2 轮：最终响应
+            [
+                TextDelta("Done."),
+                StreamEnd("end_turn", input_tokens=30, output_tokens=10),
+            ],
+        ])
+        registry = create_default_registry()
+        agent = Agent(client, registry, "anthropic", work_dir=".")
+        conv = ConversationManager()
+        conv.add_user_message("Read both files")
+    
+        events = []
+        async for e in agent.run(conv):
+            events.append(e)
+    
+        # 检查对话历史
+        msgs = build_anthropic_messages(conv.get_messages())
+        # env_context(user) + user_message + assistant(text+2 个 tool_use) + user(2 个 tool_result) + assistant(最终响应)
+&gt;       assert len(msgs) == 5
+E       assert 4 == 5
+E        +  where 4 = len([{'role': 'user', 'content': 'Current working directory: .\nOperating system: Darwin 25.6.0\nCurrent time: 2026-11-05 ...st&gt;=9.0.3",\n29\t    "pytest-asyncio&gt;=1.3.0",\n30\t]', 'is_error': False}]}, {'role': 'assistant', 'content': 'Done.'}])
+
+tests/test_agent.py:314: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_concurrent_batch_execution" time="0.004" /><testcase classname="tests.test_agent" name="test_token_usage_accumulates" time="0.004" /><testcase classname="tests.test_agent" name="test_plan_mode" time="0.001" /><testcase classname="tests.test_agent" name="test_plan_mode_denied_tool_returns_error" time="0.003" /><testcase classname="tests.test_agent" name="test_partition_tool_calls" time="0.000" /><testcase classname="tests.test_agent" name="test_system_prompt_normal" time="0.000"><failure message="AssertionError: assert 'gcode' in 'You are GCode, an AI programming assistant running in the terminal. You help users with software engineering tasks in...xt, not intermediate files.\n\n# Environment\n - Working directory: .\n - Platform: Darwin 25.6.0\n - Date: 2026-11-05'">def test_system_prompt_normal():
+        sp = build_system_prompt()
+&gt;       assert "gcode" in sp
+E       AssertionError: assert 'gcode' in 'You are GCode, an AI programming assistant running in the terminal. You help users with software engineering tasks in...xt, not intermediate files.\n\n# Environment\n - Working directory: .\n - Platform: Darwin 25.6.0\n - Date: 2026-11-05'
+
+tests/test_agent.py:476: AssertionError</failure></testcase><testcase classname="tests.test_agent" name="test_system_prompt_plan" time="0.000" /><testcase classname="tests.test_agent" name="test_plan_mode_sparse_reminder" time="0.000" /><testcase classname="tests.test_agent" name="test_environment_context" time="0.000" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_writes_file" time="0.001" /><testcase classname="tests.test_context.TestPersistToolResult" name="test_idempotent" time="0.000" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_contains_tag_and_path" time="0.000" /><testcase classname="tests.test_context.TestMakePersistedPreview" name="test_preview_truncated" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_single_oversized_persisted" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_under_limit_untouched" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_aggregate_limit" time="0.000" /><testcase classname="tests.test_context.TestApplyToolResultBudget" name="test_already_persisted_skipped" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_auto_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_manual_threshold" time="0.000" /><testcase classname="tests.test_context.TestComputeCompactThreshold" name="test_smaller_window" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_below_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_at_threshold" time="0.000" /><testcase classname="tests.test_context.TestShouldAutoCompact" name="test_above_threshold" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_extracts_between_tags" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_no_tags_returns_full" time="0.000" /><testcase classname="tests.test_context.TestExtractSummary" name="test_only_summary_tag" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_starts_closed" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_opens_after_max_failures" time="0.000" /><testcase classname="tests.test_context.TestCompactCircuitBreaker" name="test_success_resets" time="0.000" /><testcase classname="tests.test_context.TestBuildCompactMessages" name="test_basic_structure" time="0.000"><failure message="AssertionError: assert 1 == 2&#10; +  where 1 = len([Message(role='user', content='本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\nthe summary', tool_uses=[], tool_results=[], thinking_blocks=[])])">self = &lt;test_context.TestBuildCompactMessages object at 0x10dbaf920&gt;
+
+    def test_basic_structure(self) -&gt; None:
+        msgs = build_compact_messages("the summary")
+&gt;       assert len(msgs) == 2
+E       AssertionError: assert 1 == 2
+E        +  where 1 = len([Message(role='user', content='本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n\nthe summary', tool_uses=[], tool_results=[], thinking_blocks=[])])
+
+tests/test_context.py:250: AssertionError</failure></testcase><testcase classname="tests.test_context.TestSessionDir" name="test_ensure_creates_dir" time="0.000" /><testcase classname="tests.test_context.TestSessionDir" name="test_cleanup" time="0.001" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_cold_start_falls_back_to_char_estimate" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_aggregates_all_usage_components" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_current_tokens_is_baseline_plus_increment" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_anchor_beats_char_estimate_after_cache_hit" time="0.000" /><testcase classname="tests.test_context.TestUsageAnchor" name="test_replace_history_resets_anchor" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_empty" time="0.000" /><testcase classname="tests.test_context.TestEstimateTokens" name="test_counts_text_thinking_tools_and_results" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_stream_end_carries_cache_fields" time="0.000" /><testcase classname="tests.test_context.TestStreamUsageCacheFields" name="test_collector_propagates_cache_fields_into_response" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_empty_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_stops_at_token_floor" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_message_floor_when_tail_is_tiny" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_max_cap_stops_swallowing_history" time="0.000" /><testcase classname="tests.test_context.TestComputeKeepStartIndex" name="test_short_history_keeps_everything" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_orphan_tool_result_pulled_back_to_tool_use" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_non_tool_boundary_untouched" time="0.000" /><testcase classname="tests.test_context.TestAlignKeepStartToToolPair" name="test_pairing_preserved_via_compute" time="0.000" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_recent_messages_kept_verbatim" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_summary_only_covers_prefix" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_tool_pair_not_split" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_anchor_reset_after_compact" time="0.001" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_too_few_messages_degrades_to_no_compaction" time="0.000" /><testcase classname="tests.test_context.TestAutoCompactKeepRecent" name="test_event_carries_boundary_summary_and_keep" time="0.001" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_mapping_table" time="0.000" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_fetched_value" time="0.000" /><testcase classname="tests.test_context_window.TestConfigPriority" name="test_explicit_config_wins_over_default" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[claude-sonnet-4-6-1m-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[some-model-1m-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4.1-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4.1-mini-1000000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4o-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4o-mini-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-4-turbo-128000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o1-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o1-preview-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o3-mini-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[o4-mini-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[gpt-3.5-turbo-16385]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[claude-opus-4-6-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_mapping_hits[CLAUDE-OPUS-4-6-200000]" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_specificity_order_gpt_4_1_before_generic" time="0.000" /><testcase classname="tests.test_context_window.TestMappingTable" name="test_no_match_returns_zero" time="0.000" /><testcase classname="tests.test_context_window.TestDefaults" name="test_claude_default" time="0.000" /><testcase classname="tests.test_context_window.TestDefaults" name="test_unknown_model_default" time="0.000" /><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_success_is_cached_and_used" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce4dd0&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_success_is_cached_and_used(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=555_000)
+&gt;       with patch("GCode.client.create_client", return_value=fake) as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_raises_degrades_to_mapping_table" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce5190&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_raises_degrades_to_mapping_table(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:134: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_fetch_returns_none_degrades_to_default" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce54f0&gt;
+
+    @pytest.mark.asyncio
+    async def test_fetch_returns_none_degrades_to_default(self):
+        p = _provider(model="totally-unknown-model")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=None)
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_client_construction_failure_degrades" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce5850&gt;
+
+    @pytest.mark.asyncio
+    async def test_client_construction_failure_degrades(self):
+        # 例如缺少 API key 会在 create_client 内部抛错 —— 必须被吞掉。
+        p = _provider(model="claude-sonnet-4-6")
+&gt;       with patch(
+            "GCode.client.create_client",
+            side_effect=Exception("no api key"),
+        ):
+
+tests/test_context_window.py:154: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_non_anthropic_provider_is_not_fetched" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce5820&gt;
+
+    @pytest.mark.asyncio
+    async def test_non_anthropic_provider_is_not_fetched(self):
+        p = _provider(protocol="openai-compat", model="gpt-4o")
+&gt;       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_explicit_config_skips_fetch" time="0.000"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce5100&gt;
+
+    @pytest.mark.asyncio
+    async def test_explicit_config_skips_fetch(self):
+        p = _provider(model="claude-sonnet-4-6", context_window=4096)
+&gt;       with patch("GCode.client.create_client") as mk:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestAutoFetch" name="test_zero_or_negative_fetch_is_ignored" time="0.001"><failure message="ModuleNotFoundError: No module named 'GCode'">self = &lt;test_context_window.TestAutoFetch object at 0x10dce4c20&gt;
+
+    @pytest.mark.asyncio
+    async def test_zero_or_negative_fetch_is_ignored(self):
+        p = _provider(model="claude-sonnet-4-6")
+        fake = AsyncMock()
+        fake.fetch_model_context_window = AsyncMock(return_value=0)
+&gt;       with patch("GCode.client.create_client", return_value=fake):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_context_window.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/unittest/mock.py:1451: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pkgutil.py:513: in resolve_name
+    mod = importlib.import_module(modname)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+USER_HOME/Library/Application Support/violoop/runtime/python/py/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1387: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1360: in _find_and_load
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'GCode', import_ = &lt;function _gcd_import at 0x1041b00e0&gt;
+
+&gt;   ???
+E   ModuleNotFoundError: No module named 'GCode'
+
+&lt;frozen importlib._bootstrap&gt;:1324: ModuleNotFoundError</failure></testcase><testcase classname="tests.test_context_window.TestValidator" name="test_unset_context_window_defaults_to_zero" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_explicit_context_window_preserved" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[-1]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[200000]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[True]" time="0.000" /><testcase classname="tests.test_context_window.TestValidator" name="test_invalid_context_window_rejected[3.5]" time="0.000" /><testcase classname="tests.test_serialization" name="test_anthropic_preserves_signed_thinking_at_head" time="0.000" /><testcase classname="tests.test_serialization" name="test_anthropic_tool_results_become_user_blocks" time="0.000" /><testcase classname="tests.test_serialization" name="test_anthropic_merges_system_reminder_into_prev_user" time="0.000" /><testcase classname="tests.test_serialization" name="test_openai_input_tool_use_as_function_call" time="0.000" /><testcase classname="tests.test_serialization" name="test_openai_input_tool_results_as_function_call_output" time="0.000" /><testcase classname="tests.test_serialization" name="test_chat_completion_uses_tool_calls_and_skips_thinking" time="0.000" /><testcase classname="tests.test_serialization" name="test_build_messages_dispatch_by_protocol" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_valid_agent" time="0.001" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_missing_name" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_missing_description" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_model" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_permission_mode" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_invalid_max_turns" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_bad_yaml" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_no_frontmatter" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_disallowed_tools" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_parse_default_values" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_frontmatter_parse" time="0.000" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_valid_permission_modes" time="0.001" /><testcase classname="tests.test_subagent.TestAgentParser" name="test_valid_models" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_load_builtins" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_verification_disabled_by_default" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_verification_enabled" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_project_overrides_builtin" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_get_returns_agent" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_get_unknown_returns_none" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_list_agents" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_hot_reload" time="0.001" /><testcase classname="tests.test_subagent.TestAgentLoader" name="test_bad_file_skipped" time="0.001" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_global_disallowed" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_disallowed_tools_in_definition" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_tools_whitelist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_background_whitelist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_combined_whitelist_and_blacklist" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_custom_agent_extra_restrictions" time="0.000" /><testcase classname="tests.test_subagent.TestToolFilter" name="test_builtin_no_custom_restrictions" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_basic_fork" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_preserves_history" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_wraps_pending_tool_use" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_no_double_fork" time="0.000" /><testcase classname="tests.test_subagent.TestForkMode" name="test_fork_is_deep_copy" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_create_node" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_auto_trace_id" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_update_tokens" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_complete" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_tree" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_total_tokens" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_get_nonexistent" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_update_nonexistent_is_noop" time="0.000" /><testcase classname="tests.test_subagent.TestTraceManager" name="test_complete_nonexistent_is_noop" time="0.000" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_launch_and_complete" time="0.103" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_poll_completed" time="0.103" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_cancel" time="0.304" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_failed_task" time="0.105" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_list_tasks" time="0.104" /><testcase classname="tests.test_subagent.TestTaskManager" name="test_cancel_nonexistent" time="0.000" /><testcase classname="tests.test_subagent.TestNotification" name="test_format_notification" time="0.000" /><testcase classname="tests.test_subagent.TestNotification" name="test_truncate_long_result" time="0.000" /><testcase classname="tests.test_subagent.TestNotification" name="test_inject_notifications" time="0.001" /><testcase classname="tests.test_subagent.TestConfig" name="test_enable_fork_default" time="0.002" /><testcase classname="tests.test_subagent.TestConfig" name="test_enable_fork_true" time="0.002" /><testcase classname="tests.test_subagent.TestPermissionMode" name="test_dont_ask_mode" time="0.000" /><testcase classname="tests.test_subagent.TestAgentToolParams" name="test_required_fields" time="0.002" /><testcase classname="tests.test_subagent.TestAgentToolParams" name="test_optional_fields" time="0.000" /><testcase classname="tests.test_subagent.TestAgentExtensions" name="test_agent_has_id" time="0.000" /><testcase classname="tests.test_subagent.TestAgentExtensions" name="test_agent_catalog" time="0.000" /></testsuite></testsuites>

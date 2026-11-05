@@ -1,0 +1,18 @@
+{
+  "parent_rule": "Bash(*) deny",
+  "decision": "deny",
+  "decision_reason": "权限规则拒绝",
+  "tool_error": true,
+  "sentinel_created": false,
+  "before": {
+    "gcode/permissions/checker.py": "5779885f682cd587e5891b19ba098e1b8ccfdc2619d5a319a53060427a23e9f4",
+    "gcode/permissions/dangerous.py": "8430b9169681a44d3ab4a229f8b77de464d3e50c8124ab597f6f8a1c97327b0c",
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10"
+  },
+  "after": {
+    "gcode/permissions/checker.py": "5779885f682cd587e5891b19ba098e1b8ccfdc2619d5a319a53060427a23e9f4",
+    "gcode/permissions/dangerous.py": "8430b9169681a44d3ab4a229f8b77de464d3e50c8124ab597f6f8a1c97327b0c",
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10"
+  },
+  "scope": "temporary file only; no network or GUI"
+}

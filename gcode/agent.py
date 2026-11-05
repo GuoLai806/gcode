@@ -12,6 +12,9 @@ from typing import Any, AsyncIterator, Callable
 from pydantic import ValidationError
 
 from gcode.client import LLMClient
+from gcode.runtime.context import ToolExecutionContext
+from gcode.runtime.budget import TokenBudget
+from gcode.runtime.tool_ledger import ToolLedger
 from gcode.context import (
     CompactBoundary,
     CompactCircuitBreaker,
@@ -37,7 +40,11 @@ from gcode.permissions import (
 )
 from gcode.hooks import HookContext, HookEngine, ToolRejectedError
 from gcode.hooks.engine import HookNotification
-from gcode.prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
+from gcode.prompts import (
+    build_environment_context,
+    build_plan_mode_reminder,
+    build_system_prompt,
+)
 from gcode.tools import ToolRegistry
 from gcode.tools.base import (
     MAX_OUTPUT_CHARS,
@@ -62,6 +69,7 @@ MAX_OUTPUT_TOKENS_RECOVERIES = 3
 # ---------------------------------------------------------------------------
 # AgentEvent 事件类型
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class StreamText:
@@ -103,6 +111,7 @@ class TurnComplete:
 @dataclass
 class LoopComplete:
     total_turns: int
+    stop_reason: str = "completed"
 
 
 @dataclass
@@ -166,6 +175,7 @@ AgentEvent = (
 # LLM 响应收集器
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ThinkingBlock:
     thinking: str
@@ -182,6 +192,7 @@ class LLMResponse:
     output_tokens: int = 0
     cache_read: int = 0
     cache_creation: int = 0
+    usage_valid: bool = False
 
 
 class StreamCollector:
@@ -218,11 +229,13 @@ class StreamCollector:
                 self.response.output_tokens = event.output_tokens
                 self.response.cache_read = event.cache_read
                 self.response.cache_creation = event.cache_creation
+                self.response.usage_valid = event.usage_valid
 
 
 # ---------------------------------------------------------------------------
 # tool 批量执行
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ToolBatch:
@@ -237,7 +250,11 @@ def partition_tool_calls(
     batches: list[ToolBatch] = []
     for tc in tool_calls:
         tool = registry.get(tc.tool_name)
-        safe = tool is not None and tool.is_concurrency_safe and registry.is_enabled(tc.tool_name)
+        safe = (
+            tool is not None
+            and tool.is_concurrency_safe
+            and registry.is_enabled(tc.tool_name)
+        )
 
         if safe and batches and batches[-1].concurrent:
             batches[-1].calls.append(tc)
@@ -249,6 +266,7 @@ def partition_tool_calls(
 # ---------------------------------------------------------------------------
 # streaming 执行器 — 在 LLM streaming 期间启动 tool 执行
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class _ToolExecResult:
@@ -280,13 +298,17 @@ class StreamingExecutor:
         out: list[_ToolExecResult] = []
         for r in results:
             if isinstance(r, Exception):
-                out.append(_ToolExecResult(
-                    tool_id="",
-                    tool_name="",
-                    result=ToolResult(output=f"Tool execution error: {r}", is_error=True),
-                    elapsed=0.0,
-                    is_unknown=False,
-                ))
+                out.append(
+                    _ToolExecResult(
+                        tool_id="",
+                        tool_name="",
+                        result=ToolResult(
+                            output=f"Tool execution error: {r}", is_error=True
+                        ),
+                        elapsed=0.0,
+                        is_unknown=False,
+                    )
+                )
             else:
                 out.append(r)
         return out
@@ -295,6 +317,7 @@ class StreamingExecutor:
 # ---------------------------------------------------------------------------
 # Agent 主循环
 # ---------------------------------------------------------------------------
+
 
 class Agent:
     def __init__(
@@ -309,18 +332,38 @@ class Agent:
         instructions_content: str = "",
         memory_manager: MemoryManager | None = None,
         hook_engine: HookEngine | None = None,
+        max_total_tokens: int = 1_000_000,
     ) -> None:
-        self.client = client
+        self.client = (
+            client.with_output_limit(client.max_output_tokens)
+            if (hasattr(client, "_client") and hasattr(client, "max_output_tokens"))
+            else client
+        )
         self.registry = registry
         self.protocol = protocol
         self.work_dir = work_dir
         self.max_iterations = max_iterations
         self.permission_checker = permission_checker
+        self.permission_ceilings: list[PermissionChecker] = []
         self.permission_mode: PermissionMode = (
             permission_checker.mode if permission_checker else PermissionMode.DEFAULT
         )
         self.context_window = context_window
-        self.session_dir = ensure_session_dir(work_dir)
+        self._artifact_scope = uuid.uuid4().hex
+        self.token_budget = TokenBudget(
+            Path(work_dir) / ".gcode" / "runtime" / "token-budget.sqlite3",
+            self._artifact_scope,
+            max_total_tokens,
+        )
+        self.session_dir = ensure_session_dir(work_dir, self._artifact_scope)
+        self.last_stop_reason = "not_started"
+        self.allow_cu_write = False
+        self._pending_calls: dict[str, str] = {}
+        self.recovery_writes_stopped = False
+        self._unknown_call_ids: set[str] = set()
+        self.tool_ledger = ToolLedger(
+            Path(work_dir) / ".gcode" / "runtime" / "tool-calls.sqlite3"
+        )
         self.compact_breaker = CompactCircuitBreaker()
         self.replacement_state: ContentReplacementState = create_replacement_state()
         # 保存重建工作上下文所需的快照，在 Layer 2 压缩对话后使用：
@@ -334,7 +377,7 @@ class Agent:
         self.hook_engine = hook_engine
         self._loop_count = 0
         self._extracting = False
-        self.session_id: str = ""
+        self._session_id: str = ""
         self.active_skills: dict[str, str] = {}
         self._skill_catalog: str = ""
         self._agent_catalog: str = ""
@@ -349,9 +392,202 @@ class Agent:
         self.file_history: Any = None
 
     @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    @session_id.setter
+    def session_id(self, value: str) -> None:
+        self._session_id = value
+        self.session_dir = ensure_session_dir(
+            self.work_dir, value or self._artifact_scope
+        )
+        if value and self.parent_id is None:
+            self.token_budget = TokenBudget(
+                Path(self.work_dir) / ".gcode" / "runtime" / "token-budget.sqlite3",
+                value,
+                self.token_budget.max_total_tokens,
+            )
+        self.recovery_writes_stopped = self.tool_ledger.has_unknown_mutation(
+            value or self._artifact_scope
+        )
+
+    def _record_usage(
+        self,
+        prompt_uncached: int,
+        output: int,
+        cache_read: int = 0,
+        cache_write: int = 0,
+    ) -> None:
+        self.token_budget.record_usage(prompt_uncached, output, cache_read, cache_write)
+        self.total_input_tokens += prompt_uncached + cache_read + cache_write
+        self.total_output_tokens += output
+
+    def budgeted_side_client(self, client: LLMClient) -> LLMClient:
+        from gcode.runtime.client_budget import BudgetedSideClient
+
+        return BudgetedSideClient(client, self)
+
+    def execution_context(self) -> ToolExecutionContext:
+        return ToolExecutionContext(
+            run_id=self.agent_id,
+            session_id=self.session_id or self._artifact_scope,
+            cwd=Path(self.work_dir).expanduser().resolve(),
+            artifact_dir=self.session_dir,
+            parent_run_id=self.parent_id,
+            trace_id=self.trace_id or self.agent_id,
+            allow_cu_write=self.allow_cu_write and self.parent_id is None,
+        )
+
+    def _normalize_tool_call(self, call: ToolCallComplete) -> ToolCallComplete:
+        return ToolCallComplete(
+            call.tool_id,
+            call.tool_name,
+            self.execution_context().normalize_arguments(
+                call.tool_name, call.arguments
+            ),
+        )
+
+    def _permission_decision(self, tool: Any, arguments: dict[str, Any]) -> Decision:
+        if tool.category == "write" and tool.name in {"WriteFile", "EditFile"}:
+            target = self.execution_context().resolve_path(
+                arguments.get("file_path", ".")
+            )
+            protected = [
+                self.session_dir.resolve(),
+                (Path(self.work_dir) / ".gcode" / "runtime").resolve(),
+                (Path(self.work_dir) / ".gcode" / "sessions").resolve(),
+            ]
+            if any(target.is_relative_to(directory) for directory in protected):
+                return Decision(
+                    effect="deny",
+                    reason="Runtime receipts and artifacts are not editable through file tools",
+                )
+        if self.recovery_writes_stopped and tool.category != "read":
+            return Decision(
+                effect="deny",
+                reason="Recovered action outcome unknown; inspect before explicit recovery",
+            )
+        decisions = [
+            checker.check(tool, arguments)
+            for checker in (
+                [self.permission_checker] if self.permission_checker else []
+            )
+            + self.permission_ceilings
+        ]
+        for effect in ("deny", "ask"):
+            for decision in decisions:
+                if decision.effect == effect:
+                    return decision
+        return Decision(
+            effect="allow", reason="All run permission scopes allow this call"
+        )
+
+    def persist_notification(
+        self, conversation: ConversationManager, note: str
+    ) -> None:
+        from gcode.runtime.notifications import NotificationStore
+
+        scope = self.session_id or self._artifact_scope
+        store = NotificationStore(
+            Path(self.work_dir) / ".gcode" / "runtime" / "notifications.sqlite3"
+        )
+        identifier = store.put(scope, note)
+        if not any(
+            identifier in message.notification_ids for message in conversation.history
+        ):
+            conversation.add_system_reminder(note)
+            conversation.history[-1].notification_ids = [identifier]
+        self._save_checkpoint(conversation)
+
+    def _save_checkpoint(self, conversation: ConversationManager) -> None:
+        from gcode.runtime.journal import save_checkpoint
+
+        save_checkpoint(
+            self.session_dir / "runtime-checkpoint.json",
+            conversation,
+            run_id=self.agent_id,
+            session_id=self.session_id,
+            pending_calls=self._pending_calls,
+            stop_reason=self.last_stop_reason,
+            recovery_writes_stopped=self.recovery_writes_stopped,
+            unknown_call_ids=sorted(self._unknown_call_ids),
+        )
+
+    def restore_checkpoint(self) -> ConversationManager:
+        from gcode.runtime.journal import load_checkpoint, recovery_state
+
+        conversation, state = load_checkpoint(
+            self.session_dir / "runtime-checkpoint.json"
+        )
+        recovered = recovery_state(
+            self.tool_ledger, self.session_id or self._artifact_scope, state
+        )
+        self._pending_calls = recovered["pending_calls"]
+        self._unknown_call_ids = set(recovered["unknown_call_ids"])
+        self.recovery_writes_stopped = recovered["recovery_writes_stopped"]
+        return conversation
+
+    async def _invoke_journaled(
+        self, tool: Any, params: Any, call: ToolCallComplete
+    ) -> ToolResult:
+        scope = self.session_id or self._artifact_scope
+        try:
+            prior = self.tool_ledger.begin(
+                scope, call.tool_id, call.tool_name, call.arguments, tool.category
+            )
+        except ValueError as error:
+            return ToolResult(str(error), True, {"delivery_state": "not_dispatched"})
+        if prior is not None:
+            if (prior.details or {}).get(
+                "delivery_state"
+            ) == "delivery_unknown" and tool.category != "read":
+                self.recovery_writes_stopped = True
+                self._unknown_call_ids.add(call.tool_id)
+            return prior
+        try:
+            from dataclasses import replace
+
+            result = await tool.invoke(
+                params, replace(self.execution_context(), tool_call_id=call.tool_id)
+            )
+        except asyncio.CancelledError:
+            if tool.category != "read":
+                self.recovery_writes_stopped = True
+                self._unknown_call_ids.add(call.tool_id)
+            raise
+        except Exception as error:
+            result = ToolResult(
+                f"Tool invocation failed after dispatch: {error}",
+                True,
+                {
+                    "delivery_state": "delivery_unknown"
+                    if tool.category != "read"
+                    else "not_delivered"
+                },
+            )
+        if (
+            tool.category != "read"
+            and result.is_error
+            and not (result.details or {}).get("delivery_state")
+        ):
+            result.details = {
+                **(result.details or {}),
+                "delivery_state": "delivery_unknown",
+            }
+        if (result.details or {}).get(
+            "delivery_state"
+        ) == "delivery_unknown" and tool.category != "read":
+            self.recovery_writes_stopped = True
+            self._unknown_call_ids.add(call.tool_id)
+        self.tool_ledger.finish(scope, call.tool_id, result)
+        return result
+
+    @property
     def _transcript_path(self) -> str:
         if self.session_id:
-            return str(Path(self.work_dir) / ".gcode" / "sessions" / f"{self.session_id}.jsonl")
+            return str(
+                Path(self.work_dir) / ".gcode" / "sessions" / f"{self.session_id}.jsonl"
+            )
         return ""
 
     @property
@@ -365,12 +601,59 @@ class Agent:
             return self._plan_path_cache
         import random
         import datetime
-        _ADJECTIVES = ["bold", "bright", "calm", "cool", "deep", "fair", "fast", "fine",
-                       "glad", "keen", "kind", "lean", "mild", "neat", "pure", "safe",
-                       "slim", "soft", "tall", "warm", "wise", "grand", "swift", "vivid"]
-        _NOUNS = ["sketch", "draft", "spark", "bloom", "trail", "ridge", "creek", "grove",
-                  "cliff", "cloud", "field", "forge", "frost", "haven", "pearl", "stone",
-                  "storm", "river", "tower", "delta", "flame", "orbit", "pulse", "shore"]
+
+        _ADJECTIVES = [
+            "bold",
+            "bright",
+            "calm",
+            "cool",
+            "deep",
+            "fair",
+            "fast",
+            "fine",
+            "glad",
+            "keen",
+            "kind",
+            "lean",
+            "mild",
+            "neat",
+            "pure",
+            "safe",
+            "slim",
+            "soft",
+            "tall",
+            "warm",
+            "wise",
+            "grand",
+            "swift",
+            "vivid",
+        ]
+        _NOUNS = [
+            "sketch",
+            "draft",
+            "spark",
+            "bloom",
+            "trail",
+            "ridge",
+            "creek",
+            "grove",
+            "cliff",
+            "cloud",
+            "field",
+            "forge",
+            "frost",
+            "haven",
+            "pearl",
+            "stone",
+            "storm",
+            "river",
+            "tower",
+            "delta",
+            "flame",
+            "orbit",
+            "pulse",
+            "shore",
+        ]
         plans_dir = Path(self.work_dir) / ".gcode" / "plans"
         plans_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now().strftime("%m%d-%H%M")
@@ -392,8 +675,9 @@ class Agent:
     def set_skill_catalog(self, catalog: str) -> None:
         self._skill_catalog = catalog
 
-
-    def set_agent_catalog(self, catalog: str, catalog_list: list[tuple[str, str]] | None = None) -> None:
+    def set_agent_catalog(
+        self, catalog: str, catalog_list: list[tuple[str, str]] | None = None
+    ) -> None:
         self._agent_catalog = catalog
         if catalog_list is not None:
             self._agent_catalog_list = catalog_list
@@ -406,6 +690,8 @@ class Agent:
             file_path=str(kwargs.get("file_path", "")),
             message=str(kwargs.get("message", "")),
             error=str(kwargs.get("error", "")),
+            cwd=str(self.execution_context().cwd),
+            run_id=self.agent_id,
         )
 
     def _infer_file_path(self, args: dict) -> str:
@@ -426,15 +712,24 @@ class Agent:
 
     async def run(self, conversation: ConversationManager) -> AsyncIterator[AgentEvent]:
         conversation.repair_tool_chain()
+        self.last_stop_reason = "running"
         stream = self._run(conversation)
         try:
             async for event in stream:
+                if isinstance(event, ToolResultEvent):
+                    self._pending_calls.pop(event.tool_id, None)
+                if isinstance(
+                    event,
+                    (ToolResultEvent, TurnComplete, LoopComplete, CompactNotification),
+                ):
+                    self._save_checkpoint(conversation)
                 yield event
         finally:
             try:
                 await stream.aclose()
             finally:
                 conversation.repair_tool_chain()
+                self._save_checkpoint(conversation)
 
     def prepare_conversation(self, conversation: ConversationManager) -> str:
         """Inject the initial context before the UI takes its persistence cursor."""
@@ -443,7 +738,10 @@ class Agent:
             conversation.history[0].content
             if conversation.env_injected and conversation.history
             else build_environment_context(
-                self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
+                self.work_dir,
+                self.active_skills,
+                self._skill_catalog,
+                self._agent_catalog,
             )
         )
         conversation.inject_environment(env_context)
@@ -452,7 +750,9 @@ class Agent:
         conversation.inject_long_term_memory(self.instructions_content, memory_content)
         return env_context
 
-    async def _run(self, conversation: ConversationManager) -> AsyncIterator[AgentEvent]:
+    async def _run(
+        self, conversation: ConversationManager
+    ) -> AsyncIterator[AgentEvent]:
         self._current_conversation = conversation
         env_context = self.prepare_conversation(conversation)
 
@@ -469,8 +769,15 @@ class Agent:
 
         while True:
             iteration += 1
+            if not self.token_budget.before_request():
+                self.last_stop_reason = "budget_exhausted"
+                yield ErrorEvent(
+                    message="Shared run token budget exhausted; no further model request sent"
+                )
+                break
 
             if iteration > self.max_iterations:
+                self.last_stop_reason = "limit_reached"
                 yield ErrorEvent(
                     message=f"Agent reached maximum iterations ({self.max_iterations})"
                 )
@@ -498,6 +805,8 @@ class Agent:
                 recovery=self.recovery_state,
                 tool_schemas=self.registry.get_all_schemas(self.protocol),
                 transcript_path=self._transcript_path,
+                usage_recorder=self._record_usage,
+                usage_unknown_recorder=self.token_budget.mark_usage_unknown,
             )
             if isinstance(compact_result, CompactEvent):
                 yield CompactNotification(
@@ -507,9 +816,7 @@ class Agent:
                 )
                 conversation.inject_environment(env_context)
                 mem = self.memory_manager.load() if self.memory_manager else ""
-                conversation.inject_long_term_memory(
-                    self.instructions_content, mem
-                )
+                conversation.inject_long_term_memory(self.instructions_content, mem)
             elif isinstance(compact_result, str):
                 yield ErrorEvent(message=compact_result)
 
@@ -565,16 +872,41 @@ class Agent:
                 append_replacement_records(self.session_dir, _new_records)
 
             collector = StreamCollector()
+            if not self.token_budget.before_request():
+                self.last_stop_reason = "budget_exhausted"
+                yield ErrorEvent(
+                    message="Shared budget exhausted after compaction; no main request sent"
+                )
+                break
             llm_stream = self.client.stream(api_conv, system=system, tools=tools)
             collected_stream = collector.consume(llm_stream)
             try:
                 async for event in collected_stream:
                     yield event
+            except BaseException:
+                self.token_budget.mark_usage_unknown()
+                self.last_stop_reason = "failed"
+                raise
             finally:
                 await collected_stream.aclose()
                 await llm_stream.aclose()
 
             response = collector.response
+            if response.usage_valid:
+                self._record_usage(
+                    response.input_tokens,
+                    response.output_tokens,
+                    response.cache_read,
+                    response.cache_creation,
+                )
+            else:
+                self.token_budget.mark_usage_unknown()
+            if response.stop_reason in {"", "error", "aborted"}:
+                self.last_stop_reason = "failed"
+                yield ErrorEvent(
+                    message="Model stream ended without a complete response; no tools dispatched"
+                )
+                break
 
             if self.hook_engine:
                 ctx = self._build_hook_context("post_receive", message=response.text)
@@ -582,8 +914,6 @@ class Agent:
                 for he in self._drain_hook_events():
                     yield he
 
-            self.total_input_tokens += response.input_tokens
-            self.total_output_tokens += response.output_tokens
             yield UsageEvent(
                 input_tokens=self.total_input_tokens,
                 output_tokens=self.total_output_tokens,
@@ -621,10 +951,25 @@ class Agent:
                         reason=f"max_tokens recovery {output_recoveries}/{MAX_OUTPUT_TOKENS_RECOVERIES}"
                     )
                     continue
+                else:
+                    self.last_stop_reason = "limit_reached"
+                    yield ErrorEvent(
+                        message="Model output remained truncated after bounded recovery"
+                    )
+                    break
             else:
                 output_recoveries = 0
 
             if not response.tool_calls:
+                outcome = (
+                    "delivery_unknown" if self.recovery_writes_stopped else "completed"
+                )
+                if self.recovery_writes_stopped:
+                    warning = (
+                        "\n\n执行结果待核查：此前有工具副作用未知，不能确认任务完成。"
+                    )
+                    response.text += warning
+                    yield StreamText(text=warning)
                 conversation.add_assistant_message(
                     response.text, thinking_blocks=conv_thinking
                 )
@@ -642,9 +987,14 @@ class Agent:
                     for he in self._drain_hook_events():
                         yield he
                 if self.file_history is not None:
-                    summary = response.text[:60] + "..." if len(response.text) > 60 else response.text
+                    summary = (
+                        response.text[:60] + "..."
+                        if len(response.text) > 60
+                        else response.text
+                    )
                     self.file_history.make_snapshot(len(conversation.history), summary)
-                yield LoopComplete(total_turns=iteration)
+                self.last_stop_reason = outcome
+                yield LoopComplete(total_turns=iteration, stop_reason=outcome)
                 break
 
             tool_uses = [
@@ -671,14 +1021,32 @@ class Agent:
             tool_results: list[ToolResultBlock] = []
             # Keep partial successes in history even if a later call is cancelled.
             conversation.add_tool_results_message(tool_results)
-            batches = partition_tool_calls(response.tool_calls, self.registry)
+            calls = [self._normalize_tool_call(call) for call in response.tool_calls]
+            batches = partition_tool_calls(calls, self.registry)
+            if self.permission_checker:
+                for batch in batches:
+                    if batch.concurrent and any(
+                        self._permission_decision(
+                            self.registry.get(call.tool_name),
+                            self._normalize_tool_call(call).arguments,
+                        ).effect
+                        != "allow"
+                        for call in batch.calls
+                    ):
+                        batch.concurrent = False
 
             def record_parallel_result(br: _ToolExecResult) -> None:
-                tool_results.append(ToolResultBlock(
-                    tool_use_id=br.tool_id,
-                    content=self._maybe_persist_or_truncate(br.tool_id, br.result.output),
-                    is_error=br.result.is_error,
-                ))
+                tool_results.append(
+                    ToolResultBlock(
+                        tool_use_id=br.tool_id,
+                        content=self._maybe_persist_or_truncate(
+                            br.tool_id, br.result.output
+                        ),
+                        is_error=br.result.is_error,
+                        details=br.result.details,
+                        content_blocks=br.result.content,
+                    )
+                )
 
             for batch in batches:
                 if batch.concurrent and len(batch.calls) > 1:
@@ -711,7 +1079,9 @@ class Agent:
                                 tool_args=tc.arguments,
                                 file_path=file_path,
                             )
-                            rejection = await self.hook_engine.run_pre_tool_hooks(hook_ctx)
+                            rejection = await self.hook_engine.run_pre_tool_hooks(
+                                hook_ctx
+                            )
                             for he in self._drain_hook_events():
                                 yield he
                             if rejection is not None:
@@ -745,7 +1115,9 @@ class Agent:
                                 result, elapsed, is_unknown = item
 
                         if result is None:
-                            result = ToolResult(output="Error: no result from tool", is_error=True)
+                            result = ToolResult(
+                                output="Error: no result from tool", is_error=True
+                            )
 
                         if is_unknown:
                             consecutive_unknown += 1
@@ -760,6 +1132,8 @@ class Agent:
                                 tool_use_id=tc.tool_id,
                                 content=content,
                                 is_error=result.is_error,
+                                details=result.details,
+                                content_blocks=result.content,
                             )
                         )
                         if self.hook_engine:
@@ -782,6 +1156,7 @@ class Agent:
                         )
 
             if consecutive_unknown >= 3:
+                self.last_stop_reason = "failed"
                 yield ErrorEvent(
                     message="Agent terminated: too many consecutive unknown tool calls"
                 )
@@ -792,7 +1167,12 @@ class Agent:
             )
             if exit_plan_called:
                 yield TurnComplete(turn=iteration)
-                yield LoopComplete(total_turns=iteration)
+                self.last_stop_reason = (
+                    "delivery_unknown" if self.recovery_writes_stopped else "completed"
+                )
+                yield LoopComplete(
+                    total_turns=iteration, stop_reason=self.last_stop_reason
+                )
                 break
 
             if self.hook_engine:
@@ -802,7 +1182,6 @@ class Agent:
                     yield he
             yield TurnComplete(turn=iteration)
 
-
     def _consume_mailbox(self, conversation: ConversationManager) -> None:
         if not self.team_name or not self._team_manager:
             return
@@ -810,13 +1189,15 @@ class Agent:
             mailbox = self._team_manager.get_mailbox(self.team_name)
             if mailbox is None:
                 return
-            messages = mailbox.consume(self.agent_id)
+            owner = self.agent_id + ":inbox"
+            messages = mailbox.claim(self.agent_id, owner)
             for msg in messages:
                 prefix = f"[Message from {msg.from_agent}]"
                 if msg.message_type != "text":
                     prefix = f"[{msg.message_type} from {msg.from_agent}]"
-                content = f"{prefix} {msg.content}"
-                conversation.add_user_message(content)
+                content = f"[mailbox:{msg.id}] {prefix} {msg.content}"
+                self.persist_notification(conversation, content)
+                mailbox.ack(self.agent_id, msg.id, owner)
         except Exception as e:
             log.debug("Mailbox consumption failed: %s", e)
 
@@ -830,6 +1211,7 @@ class Agent:
     async def _execute_single_tool_direct(
         self, tc: ToolCallComplete
     ) -> _ToolExecResult:
+        tc = self._normalize_tool_call(tc)
         tool = self.registry.get(tc.tool_name)
         start = time.monotonic()
 
@@ -837,7 +1219,9 @@ class Agent:
             return _ToolExecResult(
                 tool_id=tc.tool_id,
                 tool_name=tc.tool_name,
-                result=ToolResult(output=f"Error: unknown tool '{tc.tool_name}'", is_error=True),
+                result=ToolResult(
+                    output=f"Error: unknown tool '{tc.tool_name}'", is_error=True
+                ),
                 elapsed=time.monotonic() - start,
                 is_unknown=True,
             )
@@ -846,18 +1230,14 @@ class Agent:
             return _ToolExecResult(
                 tool_id=tc.tool_id,
                 tool_name=tc.tool_name,
-                result=ToolResult(output=f"Error: tool '{tc.tool_name}' is disabled", is_error=True),
+                result=ToolResult(
+                    output=f"Error: tool '{tc.tool_name}' is disabled", is_error=True
+                ),
                 elapsed=time.monotonic() - start,
                 is_unknown=False,
             )
 
-        try:
-            params = tool.params_model.model_validate(tc.arguments)
-            result = await tool.execute(params)
-        except ValidationError as e:
-            result = ToolResult(output=f"Parameter validation error: {e}", is_error=True)
-        except Exception as e:
-            result = ToolResult(output=f"Tool execution error: {e}", is_error=True)
+        result = await self._execute_tool_noninteractive(tc)
 
         self._snapshot_for_recovery(tc, result)
 
@@ -869,9 +1249,9 @@ class Agent:
             is_unknown=False,
         )
 
-
     async def _execute_batch_parallel(
-        self, calls: list[ToolCallComplete],
+        self,
+        calls: list[ToolCallComplete],
         on_result: Callable[[_ToolExecResult], None] | None = None,
     ) -> list[_ToolExecResult]:
         async def execute(tc: ToolCallComplete) -> _ToolExecResult:
@@ -893,6 +1273,7 @@ class Agent:
     async def _execute_tool(
         self, tc: ToolCallComplete
     ) -> AsyncIterator[tuple[ToolResult, float, bool]]:
+        tc = self._normalize_tool_call(tc)
         tool = self.registry.get(tc.tool_name)
         start = time.monotonic()
         is_unknown = False
@@ -916,8 +1297,12 @@ class Agent:
             return
 
         # 权限检查
-        if self.permission_checker:
-            decision = self.permission_checker.check(tool, tc.arguments)
+        if (
+            self.permission_checker
+            or self.permission_ceilings
+            or self.recovery_writes_stopped
+        ):
+            decision = self._permission_decision(tool, tc.arguments)
 
             if decision.effect == "deny":
                 result = ToolResult(
@@ -951,6 +1336,7 @@ class Agent:
 
                 if response == PermissionResponse.ALLOW_ALWAYS:
                     from gcode.permissions.rules import Rule, extract_content
+
                     content = extract_content(tc.tool_name, tc.arguments)
                     pattern = f"{content[:60]}*" if len(content) > 60 else f"{content}*"
                     rule = Rule(tool_name=tc.tool_name, pattern=pattern, effect="allow")
@@ -958,24 +1344,23 @@ class Agent:
 
         try:
             params = tool.params_model.model_validate(tc.arguments)
-            result = await tool.execute(params)
+            self._pending_calls[tc.tool_id] = tool.category
+            if hasattr(self, "_current_conversation"):
+                self._save_checkpoint(self._current_conversation)
+            result = await self._invoke_journaled(tool, params, tc)
         except ValidationError as e:
             result = ToolResult(
                 output=f"Parameter validation error: {e}", is_error=True
             )
         except Exception as e:
-            result = ToolResult(
-                output=f"Tool execution error: {e}", is_error=True
-            )
+            result = ToolResult(output=f"Tool execution error: {e}", is_error=True)
 
         self._snapshot_for_recovery(tc, result)
 
         elapsed = time.monotonic() - start
         yield result, elapsed, is_unknown
 
-    def _snapshot_for_recovery(
-        self, tc: ToolCallComplete, result: ToolResult
-    ) -> None:
+    def _snapshot_for_recovery(self, tc: ToolCallComplete, result: ToolResult) -> None:
         """捕获 ReadFile 刚交给模型的内容，以便 Layer 2 压缩对话后
         auto_compact 能重新附加这些数据。每次 ReadFile 多一次磁盘读取，
         比从 tool 输出中反向解析行号要划算。
@@ -992,15 +1377,13 @@ class Agent:
             return
         self.recovery_state.record_file_read(path, content)
 
-    async def _extract_memories(
-        self, conversation: ConversationManager
-    ) -> None:
+    async def _extract_memories(self, conversation: ConversationManager) -> None:
         if self._extracting or not self.memory_manager:
             return
         self._extracting = True
         try:
             await self.memory_manager.extract(
-                self.client, conversation, self.protocol
+                self.budgeted_side_client(self.client), conversation, self.protocol
             )
         except Exception as e:
             log.debug("Memory extraction failed: %s", e)
@@ -1014,6 +1397,10 @@ class Agent:
         # （原始或已替换的）都将被丢弃。这里跳过 apply_tool_result_budget —
         # 它在主循环中的唯一目的是为 LLM 调用生成 api_conv，而本路径不需要
         # 发起看到替换结果的 LLM 调用（auto_compact 内部的摘要调用操作的是原始对话）。
+        if not self.token_budget.before_request():
+            return ErrorEvent(
+                message="Shared run token budget exhausted; summary not dispatched"
+            )
         result = await auto_compact(
             conversation,
             self.client,
@@ -1025,11 +1412,16 @@ class Agent:
             recovery=self.recovery_state,
             tool_schemas=self.registry.get_all_schemas(self.protocol),
             transcript_path=self._transcript_path,
+            usage_recorder=self._record_usage,
+            usage_unknown_recorder=self.token_budget.mark_usage_unknown,
         )
         if isinstance(result, CompactEvent):
             env_context = build_environment_context(
-            self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
-        )
+                self.work_dir,
+                self.active_skills,
+                self._skill_catalog,
+                self._agent_catalog,
+            )
             conversation.inject_environment(env_context)
             memory_content = self.memory_manager.load() if self.memory_manager else ""
             conversation.inject_long_term_memory(
@@ -1043,170 +1435,64 @@ class Agent:
         return ErrorEvent(message=result or "压缩失败：对话历史为空或未达到压缩条件")
 
     async def run_to_completion(
-        self, task: str, conversation: ConversationManager | None = None,
+        self,
+        task: str,
+        conversation: ConversationManager | None = None,
         event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
-        if conversation is None:
-            conversation = ConversationManager()
-        env_context = self.prepare_conversation(conversation)
-
+        conversation = (
+            conversation if conversation is not None else ConversationManager()
+        )
+        original_messages = {id(message) for message in conversation.history}
         if task:
-            conversation.repair_tool_chain()
             conversation.add_user_message(task)
-
-        hook_prompts = (
-            self.hook_engine.get_prompt_messages() if self.hook_engine else None
-        )
-        system = build_system_prompt(
-            hook_prompts=hook_prompts,
-            coordinator_mode=self.coordinator_mode,
-        )
-
-        tools = self.registry.get_all_schemas(self.protocol)
-
-        log.info(
-            "[run_to_completion] agent=%s tools=%d names=%s coordinator=%s",
-            self.agent_id,
-            len(tools),
-            [t["name"] for t in tools][:10],
-            self.coordinator_mode,
-        )
-
-        last_text = ""
-
-        for iteration in range(1, self.max_iterations + 1):
-            conversation.repair_tool_chain()
-            if self.hook_engine:
-                ctx = self._build_hook_context("turn_start")
-                await self.hook_engine.run_hooks("turn_start", ctx)
-
-            self._consume_mailbox(conversation)
-            if self.notification_fn:
-                for note in self.notification_fn():
-                    conversation.add_system_reminder(note)
-
-            compact_result = await auto_compact(
-                conversation,
-                self.client,
-                self.context_window,
-                self.session_dir,
-                protocol=self.protocol,
-                breaker=self.compact_breaker,
-                recovery=self.recovery_state,
-                tool_schemas=self.registry.get_all_schemas(self.protocol),
-                transcript_path=self._transcript_path,
-            )
-            if isinstance(compact_result, CompactEvent):
-                conversation.inject_environment(env_context)
-
-            deferred_names = self.registry.get_deferred_tool_names()
-            if deferred_names:
-                conversation.add_system_reminder(
-                    "The following deferred tools are available via ToolSearch. "
-                    "Their schemas are NOT loaded - use ToolSearch with "
-                    'query "select:<name>[,<name>...]" to load tool schemas before calling them:\n'
-                    + "\n".join(deferred_names)
-                )
-
-            api_conv, _new_records = apply_tool_result_budget(
-                conversation, self.session_dir, self.replacement_state
-            )
-            if _new_records:
-                append_replacement_records(self.session_dir, _new_records)
-
-            collector = StreamCollector()
-            llm_stream = self.client.stream(api_conv, system=system, tools=tools)
-            collected_stream = collector.consume(llm_stream)
-            try:
-                async for _event in collected_stream:
-                    pass
-            finally:
-                await collected_stream.aclose()
-                await llm_stream.aclose()
-
-            response = collector.response
-            self.total_input_tokens += response.input_tokens
-            self.total_output_tokens += response.output_tokens
-
-            if event_callback:
-                event_callback({
-                    "type": "usage",
-                    "usage": {
-                        "inputTokens": self.total_input_tokens,
-                        "outputTokens": self.total_output_tokens,
-                    },
-                })
-
-            if response.text:
-                last_text = response.text
-                if event_callback:
-                    event_callback({
-                        "type": "stream_text",
-                        "text": response.text,
-                    })
-
-            log.info(
-                "[run_to_completion] agent=%s iter=%d tool_calls=%d text_len=%d stop=%s",
-                self.agent_id, iteration, len(response.tool_calls),
-                len(response.text), response.stop_reason,
-            )
-
-            if not response.tool_calls:
-                conversation.add_assistant_message(response.text, thinking_blocks=[
-                    ConvThinkingBlock(tb.thinking, tb.signature) for tb in response.thinking_blocks
-                ])
-                if self.file_history is not None:
-                    summary = response.text[:60] + "..." if len(response.text) > 60 else response.text
-                    self.file_history.make_snapshot(len(conversation.history), summary)
-                break
-
-            tool_uses = [
-                ToolUseBlock(
-                    tool_use_id=tc.tool_id,
-                    tool_name=tc.tool_name,
-                    arguments=tc.arguments,
-                )
-                for tc in response.tool_calls
-            ]
-            conversation.add_assistant_message(response.text, tool_uses, thinking_blocks=[
-                ConvThinkingBlock(tb.thinking, tb.signature) for tb in response.thinking_blocks
-            ])
-            # assistant 回复已在历史中，锚定实际用量；下一轮迭代只需对
-            # 下方追加的 tool results 做字符估算。
-            conversation.record_usage_anchor(
-                response.input_tokens,
-                response.output_tokens,
-                response.cache_read,
-                response.cache_creation,
-            )
-
-            with conversation.tool_result_transaction() as tool_results:
-                for tc in response.tool_calls:
+        chunks: list[str] = []
+        try:
+            async for event in self.run(conversation):
+                if isinstance(event, PermissionRequest):
+                    if not event.future.done():
+                        event.future.set_result(PermissionResponse.DENY)
+                elif isinstance(event, StreamText):
+                    chunks.append(event.text)
                     if event_callback:
-                        event_callback({
+                        event_callback({"type": "stream_text", "text": event.text})
+                elif isinstance(event, ToolUseEvent) and event_callback:
+                    event_callback(
+                        {
                             "type": "tool_use",
-                            "toolName": tc.tool_name,
-                            "args": tc.arguments,
-                        })
-                    result = await self._execute_tool_noninteractive(tc)
-                    content = self._maybe_persist_or_truncate(tc.tool_id, result.output)
-                    tool_results.append(
-                        ToolResultBlock(
-                            tool_use_id=tc.tool_id,
-                            content=content,
-                            is_error=result.is_error,
-                        )
+                            "toolName": event.tool_name,
+                            "args": event.arguments,
+                        }
                     )
+                elif isinstance(event, UsageEvent) and event_callback:
+                    event_callback(
+                        {
+                            "type": "usage",
+                            "usage": {
+                                "inputTokens": event.input_tokens,
+                                "outputTokens": event.output_tokens,
+                                "cumulative": True,
+                            },
+                        }
+                    )
+        except asyncio.CancelledError:
+            self.last_stop_reason = "cancelled"
+            raise
+        except Exception:
+            self.last_stop_reason = "failed"
+            raise
+        # Return the actual final answer, not intermediate model deliberation.
+        for message in reversed(conversation.history):
+            if (
+                id(message) not in original_messages
+                and message.role == "assistant"
+                and not message.tool_uses
+            ):
+                return message.content
+        return "".join(chunks)
 
-            if self.hook_engine:
-                ctx = self._build_hook_context("turn_end")
-                await self.hook_engine.run_hooks("turn_end", ctx)
-
-        return last_text
-
-    async def _execute_tool_noninteractive(
-        self, tc: ToolCallComplete
-    ) -> ToolResult:
+    async def _execute_tool_noninteractive(self, tc: ToolCallComplete) -> ToolResult:
+        tc = self._normalize_tool_call(tc)
         tool = self.registry.get(tc.tool_name)
 
         if tool is None:
@@ -1235,33 +1521,35 @@ class Agent:
                     is_error=True,
                 )
 
-        if self.permission_checker:
-            decision = self.permission_checker.check(tool, tc.arguments)
+        if (
+            self.permission_checker
+            or self.permission_ceilings
+            or self.recovery_writes_stopped
+        ):
+            decision = self._permission_decision(tool, tc.arguments)
             if decision.effect == "deny":
                 return ToolResult(
                     output=f"Permission denied: {decision.reason}",
                     is_error=True,
                 )
             if decision.effect == "ask":
-                if self.permission_mode == PermissionMode.DONT_ASK:
-                    pass  # 自动批准
-                else:
-                    return ToolResult(
-                        output="Permission denied: non-interactive agent cannot prompt user",
-                        is_error=True,
-                    )
+                return ToolResult(
+                    output="Permission denied: non-interactive agent cannot prompt user",
+                    is_error=True,
+                )
 
         try:
             params = tool.params_model.model_validate(tc.arguments)
-            result = await tool.execute(params)
+            self._pending_calls[tc.tool_id] = tool.category
+            if hasattr(self, "_current_conversation"):
+                self._save_checkpoint(self._current_conversation)
+            result = await self._invoke_journaled(tool, params, tc)
         except ValidationError as e:
             result = ToolResult(
                 output=f"Parameter validation error: {e}", is_error=True
             )
         except Exception as e:
-            result = ToolResult(
-                output=f"Tool execution error: {e}", is_error=True
-            )
+            result = ToolResult(output=f"Tool execution error: {e}", is_error=True)
 
         if self.hook_engine:
             file_path = self._infer_file_path(tc.arguments)
@@ -1282,9 +1570,7 @@ class Agent:
             persist_tool_result,
         )
 
-        if len(text) > SINGLE_RESULT_CHAR_LIMIT:
+        if len(text) > MAX_OUTPUT_CHARS:
             fp = persist_tool_result(tool_use_id, text, self.session_dir)
             return make_persisted_preview(text, fp)
-        if len(text) > MAX_OUTPUT_CHARS:
-            return text[:MAX_OUTPUT_CHARS] + "\n… (output truncated)"
         return text

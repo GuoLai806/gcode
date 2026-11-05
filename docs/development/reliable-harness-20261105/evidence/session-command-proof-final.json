@@ -1,0 +1,36 @@
+{
+  "first": {
+    "fence": true,
+    "pending": {
+      "danger": "write"
+    },
+    "write_denied": true,
+    "file_exists": false,
+    "note_in_conversation": true
+  },
+  "second": {
+    "fence": true,
+    "pending": {
+      "danger": "write"
+    },
+    "write_denied": true,
+    "file_exists": false,
+    "note_in_conversation": true
+  },
+  "jsonl_newer": {
+    "note_in_conversation": true,
+    "later_message_present": true,
+    "fence": true
+  },
+  "before": {
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81",
+    "gcode/commands/handlers/session.py": "48137ea92864d2abbb1b4b6c85fbf535ce6dd817e20b9d09bf80b8f69e97c7d2"
+  },
+  "after": {
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "gcode/memory/session.py": "2852f249d96a2ebe8456d818887ab8094b268e21304f5dfc2ac6c434e80e9e81",
+    "gcode/commands/handlers/session.py": "48137ea92864d2abbb1b4b6c85fbf535ce6dd817e20b9d09bf80b8f69e97c7d2"
+  },
+  "scope": "synthetic official /session resume handler in temp workspace"
+}
