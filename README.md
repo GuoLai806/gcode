@@ -55,7 +55,7 @@ gcode --cu-config /absolute/path/to/private-cu-config.json
 ### 环境要求
 
 - Python >= 3.11
-- 操作系统：Windows / macOS / Linux
+- 当前加固路径需要 POSIX 文件锁与进程组；本轮实测 macOS Apple Silicon。Linux 未完成本轮验收，Windows 需要平台适配。
 
 ### 安装
 

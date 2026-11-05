@@ -22,3 +22,6 @@ build/
 # 其他工具配置
 .claude/
 CLAUDE.md
+.env
+.env.*
+!.env.example

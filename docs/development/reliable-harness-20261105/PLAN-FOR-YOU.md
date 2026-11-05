@@ -9,3 +9,5 @@
 迁移前备份原会话、SQLite/WAL、工件和工作树，关闭旧进程后切换版本；效果未知的动作先核对，不能靠重启或换状态目录重新执行。回退时保留新版本的审计证据，让旧版本读取迁移前副本，避免旧程序覆盖新状态。细节和验收见 [执行版](PLAN-FOR-AI.md)。
 
 最终全量回归794项通过；wheel已在全新虚拟环境安装并检查CLI与六个sidecar文件。证据索引见 [DELIVERY.json](DELIVERY.json)。
+
+平台范围：本轮实际验证是macOS Apple Silicon。加固实现使用POSIX文件锁/进程组，Linux需独立验收，Windows需平台适配；不沿用旧README的跨平台支持描述作为本轮证据。
