@@ -1,0 +1,14 @@
+{
+  "max_total": 100000,
+  "prompt_uncached": 2275,
+  "output": 85,
+  "cache_read": 5504,
+  "cache_write": 0,
+  "revision": 2,
+  "usage_unknown": 0,
+  "observed_total": 7864,
+  "cost_usd": null,
+  "scope": "one installed CLI synthetic-file task",
+  "initialized_empty_scopes": 1,
+  "audit_note": "Agent initialization created an unused empty scope before session assignment; only the charged session is reported."
+}

@@ -38,3 +38,5 @@ python -m build --wheel
 最终全量结果以 evidence/integration-delivery.xml 和对应源码 manifest 为准；早期 integration-final.xml 是加上最后摘要完整历史改动之前的 792 项结果，不能混成同一次运行。全部证据中的 fake provider、真实进程/Git、真实模型、真实 GUI 各有范围说明。
 
 最终真实压缩验证补充：最初两次真实模型输出被严格保护拒绝，第二次原生输出实际包含合法外层标签，但在引用控制提示时含有字面标签，旧解析器误计为多块。改为外层完整匹配并拒绝独立第二块，同时移除用户历史中重复注入的控制系统提示。第三次真实调用成功；检查点原始14条消息完整，约束、ALPHA=42和beta.py标记独立回读存在。最初检查脚本只看history[0]（环境消息）造成标记假阴性，保留原诊断并附独立审计纠正。它们都是单次合成历史试验，不是语义保持率。最终全量794项通过，源码测试前后相同；wheel在全新虚拟环境安装并验证CLI和六个sidecar文件。
+
+Installed-wheel real CLI follow-up: python -m gcode -p used the owner's existing configured model on a synthetic marker file, exit0 with the exact marker and a completed ReadFile ledger receipt. No credential was found in this task's persisted files. Budget receipt is saved separately; no source changes were made for this test.

@@ -17,7 +17,9 @@
     "native_reversible_actions": "cu-native-reversible.json",
     "actual_model_compaction": "evidence/gcode-real-compaction-third.json",
     "compaction_checkpoint_independent_audit": "evidence/gcode-real-compaction-third-audit.json",
-    "clean_wheel_install": "evidence/wheel-clean-install.json"
+    "clean_wheel_install": "evidence/wheel-clean-install.json",
+    "actual_installed_headless_cli": "evidence/gcode-real-installed-headless.json",
+    "actual_installed_cli_usage": "evidence/gcode-real-installed-headless-budget.json"
   },
   "limits": [
     "No full cross-app model A/B",
