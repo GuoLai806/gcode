@@ -39,17 +39,9 @@ gcode --cu-config /absolute/path/to/private-cu-config.json
 - **团队执行后端**：当前加固与验收针对 In-process；终端后端缺少授权传递时拒绝启动
 - **Git Worktree 隔离**：可选独立分支；创建与清理均校验状态
 
-### 五层权限防御链
+### 权限检查
 
-```
-1. Plan Mode 例外      # 只读模式特殊处理
-2. 安全命令白名单     # ls/pwd/git status 自动放行
-3. 危险命令黑名单     # rm -rf / 直接拦截
-4. PathSandbox        # 路径访问控制
-5. 规则引擎           # 用户/项目/本地三层规则
-6. 权限模式           # default/accept-edits/plan/bypass
-7. HITL 人工确认      # 最终用户确认
-```
+显式拒绝规则优先；危险命令和路径范围检查之后处理 Plan 模式约束，再判断明确允许、极小的准确命令集合和权限模式。需要交互确认而无法向用户确认的后台任务会拒绝执行。`awk`、`find -exec`、`sed -i`、`xargs`、`tee`、`npx` 等不因命令前缀自动放行。应用层规则不构成操作系统沙箱。
 
 ### 智能上下文管理
 - **两层压缩策略**
