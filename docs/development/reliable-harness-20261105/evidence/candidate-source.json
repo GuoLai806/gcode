@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-05T17:54:57Z",
+  "timestamp_utc": "2026-11-05T19:19:23Z",
   "command": [
     "python",
     "-m",
@@ -10,7 +10,7 @@
     "--junitxml=report.xml"
   ],
   "exit_code": 0,
-  "wall_seconds": 36.573421001434326,
+  "wall_seconds": 35.839521169662476,
   "source_unchanged": true,
   "source_files": {
     "gcode/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -90,7 +90,7 @@
     "gcode/runtime/artifacts.py": "fc3756c0154bae3ed8e47cc2d4da40ec49639dc2e7e19802081e1139c91daaf3",
     "gcode/runtime/budget.py": "201f29a880719e927258611adf95ebec9d11145f5298a500edef737968c41260",
     "gcode/runtime/client_budget.py": "bc4dc9a868769af5a918fd2b82b64b22e673926effac354691540e3efdabc570",
-    "gcode/runtime/constraints.py": "7ed22d9ddf412a4d645f6593cfb87c3792008599f31cbca01cb58fc8f18893e6",
+    "gcode/runtime/constraints.py": "7cbbeae7584ee3be240d29b9c772db8d986ab15916934d11f0a73c96dbb21fdb",
     "gcode/runtime/context.py": "00a38388e00dc02a5a4766283e74a86a8f835512f071455d92b3fbd470062f11",
     "gcode/runtime/journal.py": "b981aa55317b3de2c9a66c7005aece9cae8bccec2f18a094ad7c254f3e658a0f",
     "gcode/runtime/notifications.py": "dfe21039c6f140a67d3f057d5c8c1e6e39f7be86451387389028aae568a084e8",
@@ -174,7 +174,7 @@
     "tests/test_checkpoint_integrity.py": "061da3dd7712ef5b07694f4e22da0994a474ba17ec5f3b17175003b2db75e0ab",
     "tests/test_cli_budget.py": "3b49662f115412dcf16004106546385b9575398f664dbad6de8d18339d21fd0f",
     "tests/test_commands.py": "dddf3deff9b252e21fea7684a2fa04007c123b8035f864b31e1b8ea45111c7ff",
-    "tests/test_constraint_ledger.py": "ff7381f91e5f5edaf2c8d556a3e698e40d97c4b478fbe9d678cc08d00b1e3ba5",
+    "tests/test_constraint_ledger.py": "4bde09d45b2b58abb4aab6be0620dadbeb5c02a1e4b80ccdbe470dd8842c5a99",
     "tests/test_context.py": "84ed3a718d8e7c3c3edeb29a7a26c3bd270844d5806425d5f1fef480fb9ed731",
     "tests/test_context_window.py": "a884ad7d29b736efff022b9caa19686fb2aef30190ccd52a5ee1e1e96ede88de",
     "tests/test_cu_bootstrap.py": "a471fa79f02f4633f04a6d910ffcc0cc31aeb1d8e1594514c00cf681e2b134d4",
@@ -205,5 +205,5 @@
     "tests/test_worktree_safety.py": "c8f067f423e2f9ee0cb405e266568e55c006defc248e065888da1f9559c4a9df",
     "tests/verify_subagent.py": "51e02196226a150365069c71f299e462b4dca58ca9e6cee68bb036fbb576a526"
   },
-  "source_snapshot_sha256": "35da67518fe605ef6ead4bda0be744e1781dc4292f39b10ad888f3ed5206f29a"
+  "source_snapshot_sha256": "7a962ad97433142b3b3c84b59cda429e8cfacb42bbd08a30dfa2c3036550fb88"
 }

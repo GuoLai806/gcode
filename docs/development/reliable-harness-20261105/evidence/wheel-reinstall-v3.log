@@ -1,0 +1,10 @@
+Processing <WORKSPACE>/outputs/development-20261105/gcode-delivery-wheel-v3/gcode-0.2.0-py3-none-any.whl
+Installing collected packages: gcode
+  Attempting uninstall: gcode
+    Found existing installation: gcode 0.2.0
+    Uninstalling gcode-0.2.0:
+      Successfully uninstalled gcode-0.2.0
+Successfully installed gcode-0.2.0
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+[notice] To update, run: <WORKSPACE>/work/dev/gcode-wheel-venv/bin/python -m pip install --upgrade pip

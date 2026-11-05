@@ -1,0 +1,36 @@
+{
+  "kind": "actual next model request after restoring real compaction boundary",
+  "model": "deepseek-flash",
+  "stop_reason": "completed",
+  "input_checks": [
+    {
+      "serialized_messages_sha256": "8aede3a3e237976c93f60c31a609a13d7493b082b0c611418e8d38d9caaaa309",
+      "result_in_actual_next_request": true,
+      "todo_in_actual_next_request": true,
+      "restriction_in_actual_next_request": true
+    }
+  ],
+  "answer": "- 确认的结果：job ALPHA 已完成，结果为 42。\n- 剩余待办：文件 beta.py 仍需审查（对话中没有出现过它的任何源码，也未实际打开或修改）。\n- 此前限制：不要上传客户资料，后续只查看/处理合成测试数据。\n\n本次未使用任何工具，以上仅来自保留的对话内容。",
+  "answer_result_present": true,
+  "answer_todo_present": true,
+  "answer_restriction_present": true,
+  "checkpoint_sha256": "3cbae406d6f8803432e0744c33cb60ea84c4bb3767b8043a555889efe07c0e90",
+  "usage": {
+    "scope": "f448407e0a9d4a199af7461d3141bf2a",
+    "max_total": 100000,
+    "prompt_uncached": 8652,
+    "output": 101,
+    "cache_read": 1536,
+    "cache_write": 0,
+    "revision": 1,
+    "usage_unknown": 0,
+    "max_total_tokens": 100000,
+    "observed_total": 10289,
+    "remaining": 89711,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "wall_ms": 1819.7185840108432,
+  "scope": "one synthetic-history restored-boundary real request; not a general semantic retention rate"
+}

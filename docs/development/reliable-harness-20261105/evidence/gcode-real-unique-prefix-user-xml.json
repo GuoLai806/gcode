@@ -1,0 +1,44 @@
+{
+  "kind": "unique old-prefix real-model compaction plus restored next request",
+  "model": "deepseek-flash",
+  "source_kind": "synthetic",
+  "history_count": 34,
+  "compaction_committed": true,
+  "unique_markers_absent_from_retained_tail": true,
+  "old_result_in_summary": true,
+  "old_todo_in_summary": true,
+  "restriction_in_summary": true,
+  "stop_reason": "completed",
+  "next_request_checks": [
+    {
+      "messages_sha256": "c54c772885e9156736954c2dba047d4bd35b7e881225bc3e1ec49f612c50efa4",
+      "unique_old_result_present": true,
+      "unique_old_todo_present": true,
+      "restriction_present": true,
+      "literal_user_xml_present": true
+    }
+  ],
+  "answer": "**已确认的结论**\n- 阶段甲结果：**314159**（此前唯一明确记录的确认值，需继续保留）。\n- 第0–15阶段：每阶段只记录了同一套模板内容——“检查输入形状、记录状态和临时测试数据，未执行任何外部业务操作”。除此之外没有可追溯的具体数值、断言输出或产物。\n\n**未完成的工作**\n- `delta_check.py` 的审查：状态仍为“尚未审查”，从未读取或分析过其内容，这是最主要的待办。\n- 第0–15阶段的记录缺乏区分度与真实证据，需要向用户确认是否补做实质检查（例如实际运行输入形状校验）以生成有内容的记录；此前只是重复同一段模板。\n\n**操作上的限制（继续有效）**\n- 禁止删除原文件；只能创建新版本。\n- 任何写入（含新建记录文件）之前必须先核对备份。\n- 不执行任何外部业务操作；本轮也未调用工具。\n\n**需要你确认的一点**：`delta_check.py` 的审查是只做只读分析并输出结论，还是需要在其基础上产出新版本文件？若需写入，我会先核对备份再只创建新版本。",
+  "answer_old_result": true,
+  "answer_old_todo": true,
+  "answer_restriction": true,
+  "usage": {
+    "scope": "54d31232e7304896ad864d0439afbf98",
+    "max_total": 150000,
+    "prompt_uncached": 43846,
+    "output": 3510,
+    "cache_read": 1664,
+    "cache_write": 0,
+    "revision": 2,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 49020,
+    "remaining": 100980,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "wall_ms": 21663.43545896234,
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "scope": "one synthetic unique-prefix example; neither marker is supplied in the final question or retained tail; not a general retention success rate"
+}

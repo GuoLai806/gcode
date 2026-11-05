@@ -1,0 +1,47 @@
+{
+  "kind": "unique old-prefix real-model compaction plus restored next request",
+  "model": "deepseek-flash",
+  "source_kind": "synthetic",
+  "history_count": 34,
+  "compaction_committed": true,
+  "unique_markers_absent_from_retained_tail": true,
+  "old_result_in_summary": true,
+  "old_todo_in_summary": true,
+  "restriction_in_summary": true,
+  "stop_reason": "completed",
+  "next_request_checks": [
+    {
+      "messages_sha256": "b8c09ddb10afbad9ccd99dabb4eef4fd4a25e2cad38633c4f3f2b37eb75b17ca",
+      "unique_old_result_present": true,
+      "unique_old_todo_present": true,
+      "restriction_present": true,
+      "literal_user_xml_present": true
+    }
+  ],
+  "answer": "**先前确认的结论**\n- 阶段甲结果：314159（这是历史记录中保留的结论值，本次会话未重新验证）。\n\n**未完成的工作**\n- `delta_check.py` 的代码审查尚未执行。本次会话至今只产出了第0至第15阶段的“合成技术记录”，全部是“检查输入形状、记录状态、临时测试数据，未执行外部业务操作”这类重复声明，没有对 `delta_check.py` 做任何实际阅读或审查，也没有产生新的技术结论。\n\n**操作上的限制（来自你的硬性指令）**\n- 禁止删除原文件。\n- 只创建新版本（版本化推进，不覆盖现有内容）。\n- 任何写入之前先核对备份。\n\n补充说明：当前工作目录 `.../actual-unique-user-xml-installed` 下的文件我尚未查看过；如果接下来要真正推进 `delta_check.py` 审查，我会先只读查看、核对备份状态，再谈任何写入。",
+  "answer_old_result": true,
+  "answer_old_todo": true,
+  "answer_restriction": true,
+  "constraints_sha256": "b463c0c4c5e8d994182e1c4e6d649ee2670668f54dcc459e559528c141eaf395",
+  "loaded_from_installed_wheel": true,
+  "wheel_sha256": "e5de0421d3e65cbc5ba15488ef59f6e4305f07f733e2bf8cbe7ab5971979a25e",
+  "usage": {
+    "scope": "ee0eb1a5ab3a44e1b415697c0d7c2372",
+    "max_total": 150000,
+    "prompt_uncached": 9681,
+    "output": 1726,
+    "cache_read": 35968,
+    "cache_write": 0,
+    "revision": 2,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 47375,
+    "remaining": 102625,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "wall_ms": 10755.866167019121,
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "scope": "one synthetic unique-prefix example; neither marker is supplied in the final question or retained tail; not a general retention success rate"
+}

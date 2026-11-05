@@ -71,14 +71,22 @@ def collect_constraints(history: Iterable[Any]) -> list[str]:
         ):
             continue
         content = getattr(message, "content", "")
-        if not isinstance(content, str) or content.lstrip().startswith(
+        if not isinstance(content, str):
+            continue
+        if getattr(message, "origin", "") != "user" and content.lstrip().startswith(
             _LEGACY_SUMMARY_PREFIXES
         ):
             continue
-        # Never promote embedded runtime/tool blocks to user constraints.
-        content = _BLOCK.sub("", content)
-        if _TAG.search(content):
-            continue
+        # Provenance, not tag spelling, determines the source. Modern runtime,
+        # tool and instruction messages already have distinct origins above.
+        # An attributed user may legitimately paste XML, including a literal
+        # <INSTRUCTIONS> block; retain it as historical quoted user text.
+        # Legacy origin-less messages can contain synthetic runtime fragments,
+        # so keep the conservative fallback only for that ambiguous format.
+        if getattr(message, "origin", "") != "user":
+            content = _BLOCK.sub("", content)
+            if _TAG.search(content):
+                continue
         for paragraph in re.split(r"\r?\n[ \t]*\r?\n+", content):
             paragraph = paragraph.strip()
             if paragraph:

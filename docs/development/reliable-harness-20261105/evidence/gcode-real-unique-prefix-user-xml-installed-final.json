@@ -1,0 +1,47 @@
+{
+  "kind": "unique old-prefix real-model compaction plus restored next request",
+  "model": "deepseek-flash",
+  "source_kind": "synthetic",
+  "history_count": 34,
+  "compaction_committed": true,
+  "unique_markers_absent_from_retained_tail": true,
+  "old_result_in_summary": true,
+  "old_todo_in_summary": true,
+  "restriction_in_summary": true,
+  "stop_reason": "completed",
+  "next_request_checks": [
+    {
+      "messages_sha256": "e8e68a5232434db2da66e5a6d52fbbde3e6db91a2799a15da2b8e3979ad571f3",
+      "unique_old_result_present": true,
+      "unique_old_todo_present": true,
+      "restriction_present": true,
+      "literal_user_xml_present": true
+    }
+  ],
+  "answer": "根据当前保留的历史，三点如下：\n\n**已确认的结果**\n- 仅有一项：阶段甲的结果为 `314159`。\n- 需要说明的是，这个数字只是被反复写入进度记录，会话中从未实际执行任何计算或测试来验证它，也没有对应的输出日志。它属于\"记录在案\"，不等同于\"已验证\"。\n\n**未完成的工作**\n- `delta_check.py` 的审查尚未执行。历史中只出现了这个文件名，从未读取过它的代码，所以审查仍是从零开始。\n- 另外，第0至第15阶段的记录全部是同一段\"检查输入形状、记录状态和临时测试数据，没有执行任何外部业务操作\"的重复文本，没有任何新增形状数据、状态值或测试数据。也就是说，这些阶段实质上是空的，没有可用于核对的实质内容。\n\n**操作限制**\n- 禁止删除原文件。\n- 只创建新版本，不做原地覆盖。\n- 任何写入前，先核对备份。\n\n如果你希望这些记录真正有价值，建议下一步实际读取 `delta_check.py` 并执行审查；在读取或写入任何文件前，我会先按上述限制核对备份情况。",
+  "answer_old_result": true,
+  "answer_old_todo": true,
+  "answer_restriction": true,
+  "constraints_sha256": "7cbbeae7584ee3be240d29b9c772db8d986ab15916934d11f0a73c96dbb21fdb",
+  "loaded_from_installed_wheel": true,
+  "wheel_sha256": "930b1081088b0134e472d2202170b244c27f69bba11ef6684ea6b2a166073829",
+  "usage": {
+    "scope": "ca5767a1717b42a0bbb46ed09cfa02ae",
+    "max_total": 150000,
+    "prompt_uncached": 44020,
+    "output": 1603,
+    "cache_read": 1664,
+    "cache_write": 0,
+    "revision": 2,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 47287,
+    "remaining": 102713,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "wall_ms": 10859.34087500209,
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "scope": "one synthetic unique-prefix example; neither marker is supplied in the final question or retained tail; not a general retention success rate"
+}

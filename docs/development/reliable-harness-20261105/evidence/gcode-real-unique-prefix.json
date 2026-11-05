@@ -1,0 +1,43 @@
+{
+  "kind": "unique old-prefix real-model compaction plus restored next request",
+  "model": "deepseek-flash",
+  "source_kind": "synthetic",
+  "history_count": 34,
+  "compaction_committed": true,
+  "unique_markers_absent_from_retained_tail": true,
+  "old_result_in_summary": true,
+  "old_todo_in_summary": true,
+  "restriction_in_summary": true,
+  "stop_reason": "completed",
+  "next_request_checks": [
+    {
+      "messages_sha256": "d137ea9f46b58fd0b716e1c872169dc4cf30acbc673851d43215c4f1fd6bd760",
+      "unique_old_result_present": true,
+      "unique_old_todo_present": true,
+      "restriction_present": true
+    }
+  ],
+  "answer": "**先前确认的结果**：阶段甲的结果为 314159。\n\n**尚未完成的工作**：`delta_check.py` 的审查尚未执行。这是当前唯一的待办事项。\n\n**操作限制**：\n1. 禁止删除原文件。\n2. 只能创建新版本，不得覆盖或修改原有文件。\n3. 任何写入操作之前，必须先核对备份。\n\n另外说明：第0至第15阶段的“测试进度记录”均为合成记录，内容重复，未实际执行验证，也未进行任何外部业务操作。若后续要写文件，需先在满足上述三条限制的前提下核对备份。",
+  "answer_old_result": true,
+  "answer_old_todo": true,
+  "answer_restriction": true,
+  "usage": {
+    "scope": "8d99086b1ec04817afb417f2e01a0800",
+    "max_total": 150000,
+    "prompt_uncached": 43855,
+    "output": 1693,
+    "cache_read": 1664,
+    "cache_write": 0,
+    "revision": 2,
+    "usage_unknown": 0,
+    "max_total_tokens": 150000,
+    "observed_total": 47212,
+    "remaining": 102788,
+    "overrun": 0,
+    "usage_complete": true,
+    "cost_usd": null
+  },
+  "wall_ms": 11429.136124963406,
+  "manager_sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+  "scope": "one synthetic unique-prefix example; neither marker is supplied in the final question or retained tail; not a general retention success rate"
+}

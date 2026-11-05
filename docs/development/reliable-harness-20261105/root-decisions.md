@@ -40,3 +40,7 @@ python -m build --wheel
 最终真实压缩验证补充：最初两次真实模型输出被严格保护拒绝，第二次原生输出实际包含合法外层标签，但在引用控制提示时含有字面标签，旧解析器误计为多块。改为外层完整匹配并拒绝独立第二块，同时移除用户历史中重复注入的控制系统提示。第三次真实调用成功；检查点原始14条消息完整，约束、ALPHA=42和beta.py标记独立回读存在。最初检查脚本只看history[0]（环境消息）造成标记假阴性，保留原诊断并附独立审计纠正。它们都是单次合成历史试验，不是语义保持率。最终全量794项通过，源码测试前后相同；wheel在全新虚拟环境安装并验证CLI和六个sidecar文件。
 
 Installed-wheel real CLI follow-up: python -m gcode -p used the owner's existing configured model on a synthetic marker file, exit0 with the exact marker and a completed ReadFile ledger receipt. No credential was found in this task's persisted files. Budget receipt is saved separately; no source changes were made for this test.
+
+Real-model continuity follow-up: a separate 34-message synthetic history placed unique old result314159 and delta_check.py only in the summarized prefix, not the retained tail or final question. Both survived in the generated summary, restored compact boundary, observed next actual SDK request and answer; the literal restriction survived too. This is one controlled example, not a general semantic retention rate.
+
+Final provenance correction: attributed user XML and user-pasted old summary headers are retained verbatim; tag/prefix heuristics apply only to ambiguous legacy messages. Runtime/reminder/tool sources remain excluded. Full suite799 passed, final wheel source match and installed next-request/CLI receipts are recorded in DELIVERY.json; prior794/798 records remain historical.

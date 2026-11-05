@@ -1,0 +1,7 @@
+{
+  "source_commit_before": "dc2769752e5aa3e5971315ef1603c563b5ab573d",
+  "source_sha256_before": "7ed22d9ddf412a4d645f6593cfb87c3792008599f31cbca01cb58fc8f18893e6",
+  "fixture": "<INSTRUCTIONS>请勿删除备份，所有修改都创建新版本。</INSTRUCTIONS>",
+  "explicit_user_literal_preserved_before": false,
+  "scope": "synthetic attributed user; old source loaded from exact Git blob, no provider or GUI"
+}

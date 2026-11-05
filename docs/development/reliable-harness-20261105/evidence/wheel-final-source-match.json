@@ -1,0 +1,14 @@
+{
+  "wheel_sha256": "930b1081088b0134e472d2202170b244c27f69bba11ef6684ea6b2a166073829",
+  "source_modules_matched": 148,
+  "sidecar_files": [
+    "gcode/cu/sidecar/close-known-run.mjs",
+    "gcode/cu/sidecar/launch-proof.mjs",
+    "gcode/cu/sidecar/ledger-lifecycle.mjs",
+    "gcode/cu/sidecar/pi-local-provider.mjs",
+    "gcode/cu/sidecar/reconcile-preparation.mjs",
+    "gcode/cu/sidecar/server.mjs"
+  ],
+  "candidate_snapshot_sha256": "7a962ad97433142b3b3c84b59cda429e8cfacb42bbd08a30dfa2c3036550fb88",
+  "scope": "final pure Python wheel modules and sidecar assets match tested source"
+}

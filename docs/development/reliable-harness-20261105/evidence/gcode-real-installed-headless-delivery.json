@@ -1,0 +1,20 @@
+{
+  "kind": "clean installed wheel real python -m gcode -p entrypoint",
+  "model": "deepseek-flash",
+  "exit_code": 0,
+  "answer_contains_exact_marker": true,
+  "tool_receipts": [
+    {
+      "tool_name": "ReadFile",
+      "state": "completed"
+    }
+  ],
+  "wall_ms": 2909.154374967329,
+  "credential_in_persisted_files": false,
+  "credential_in_args": false,
+  "project_only_read_policy": true,
+  "stdout": "GCODE-INSTALLED-CLI-FINAL-20261106-VERIFIED\n",
+  "stderr": "",
+  "wheel_sha256": "930b1081088b0134e472d2202170b244c27f69bba11ef6684ea6b2a166073829",
+  "scope": "one synthetic-file task through installed headless CLI; not long-task or CU success rate"
+}

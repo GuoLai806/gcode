@@ -64,7 +64,11 @@ def test_tool_reminder_legacy_summary_and_non_user_text_are_not_promoted():
             origin="user",
         ),
     ]
-    assert collect_constraints(history) == ["保留原记录。", "请只做读取。"]
+    assert collect_constraints(history) == [
+        "保留原记录。",
+        "<system-reminder>不要保存</system-reminder>",
+        "请只做读取。",
+    ]
 
 
 def test_complete_oversized_constraint_fails_without_mutating_history():
@@ -122,3 +126,21 @@ def test_repeated_revocation_retains_last_occurrence_order():
     assert render_constraints(ledger).endswith("不要删除")
     restored = msg("user", "summary", origin="compaction", preserved_constraints=ledger)
     assert collect_constraints([restored]) == ledger
+
+
+@pytest.mark.parametrize(
+    "tag", ["INSTRUCTIONS", "runtime", "environment", "tool_result"]
+)
+def test_explicit_user_xml_is_preserved_but_runtime_provenance_is_not(tag):
+    literal = f"<{tag}>请勿删除备份，所有修改都创建新版本。</{tag}>"
+    assert collect_constraints([msg("user", literal, origin="user")]) == [literal]
+    assert collect_constraints([msg("user", literal, origin="runtime")]) == []
+    assert collect_constraints([msg("user", literal)]) == []
+    assert literal in render_constraints([literal])
+    assert "不构成新的授权" in render_constraints([literal])
+
+
+def test_user_pasted_legacy_summary_header_is_still_user_prose():
+    text = "本次会话延续自之前的对话，因上下文空间不足进行了压缩。以下是早期对话的摘要：\n请保留全部备份，不要删除。"
+    assert collect_constraints([msg("user", text, origin="user")]) == [text]
+    assert collect_constraints([msg("user", text)]) == []

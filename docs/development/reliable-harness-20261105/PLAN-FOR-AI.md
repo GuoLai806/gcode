@@ -14,6 +14,10 @@
 
 授权：已允许开发与推代码；仅公开独立代码和脱敏证据；真实账户密钥、本机桥源码、二进制、原生schema及用户界面原文不进入仓库。无待用户决定的常规实现选择，后续实际生产部署与更多GUI业务任务另按具体范围执行。
 
-最终本地验收：794 passed、0 failed，35.82s；源码snapshot和JUnit一致。干净wheel环境CLI通过，参见DELIVERY.json。远程CI与生产部署不由这些本地结果证明。
+最终本地验收：799 passed、0 failed，35.05s；源码snapshot和JUnit一致。干净wheel环境CLI通过，参见DELIVERY.json。远程CI与生产部署不由这些本地结果证明。
 
 平台范围：本轮实际验证是macOS Apple Silicon。加固实现使用POSIX文件锁/进程组，Linux需独立验收，Windows需平台适配；不沿用旧README的跨平台支持描述作为本轮证据。
+
+发布顺序：先保留已推开发分支，完整验收及证据提交后重新核对origin/main；可安全快进时更新主线，保留开发分支，不force覆盖他人工作。实际远程状态以最终交付记录为准。
+
+最新来源修复：明确origin=user的XML及用户主动贴回的旧摘要头保留为原文；只对旧版无来源消息做保守过滤。新的完整回归799项通过，见DELIVERY.json及来源边界评审。

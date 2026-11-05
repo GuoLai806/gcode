@@ -1,0 +1,13 @@
+{
+  "max_total": 100000,
+  "prompt_uncached": 497,
+  "output": 95,
+  "cache_read": 7296,
+  "cache_write": 0,
+  "revision": 2,
+  "usage_unknown": 0,
+  "observed_total": 7888,
+  "scope": "final installed CLI synthetic task",
+  "initialized_empty_scopes": 1,
+  "cost_usd": null
+}

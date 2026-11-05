@@ -1,11 +1,11 @@
 {
   "baseline": "221c870f8cc0872e6704a0140f1dd9923ac66a5c",
   "final_test": {
-    "passed": 794,
+    "passed": 799,
     "failed": 0,
-    "seconds": 35.82,
+    "seconds": 35.035,
     "source_unchanged": true,
-    "source_snapshot_sha256": "35da67518fe605ef6ead4bda0be744e1781dc4292f39b10ad888f3ed5206f29a",
+    "source_snapshot_sha256": "7a962ad97433142b3b3c84b59cda429e8cfacb42bbd08a30dfa2c3036550fb88",
     "junit": "evidence/integration-delivery.xml"
   },
   "independent_review": "evidence/REPORT.md",
@@ -18,8 +18,12 @@
     "actual_model_compaction": "evidence/gcode-real-compaction-third.json",
     "compaction_checkpoint_independent_audit": "evidence/gcode-real-compaction-third-audit.json",
     "clean_wheel_install": "evidence/wheel-clean-install.json",
-    "actual_installed_headless_cli": "evidence/gcode-real-installed-headless.json",
-    "actual_installed_cli_usage": "evidence/gcode-real-installed-headless-budget.json"
+    "actual_installed_headless_cli": "evidence/gcode-real-installed-headless-delivery.json",
+    "actual_installed_cli_usage": "evidence/gcode-real-installed-headless-delivery-budget.json",
+    "real_next_request_after_restored_compaction": "evidence/gcode-real-post-compaction.json",
+    "real_unique_old_prefix_after_restore": "evidence/gcode-real-unique-prefix.json",
+    "real_user_origin_compaction_installed": "evidence/gcode-real-unique-prefix-user-xml-installed-final.json",
+    "final_wheel_source_match": "evidence/wheel-final-source-match.json"
   },
   "limits": [
     "No full cross-app model A/B",
