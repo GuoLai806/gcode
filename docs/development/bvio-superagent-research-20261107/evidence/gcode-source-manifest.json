@@ -1,0 +1,146 @@
+[
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/skills/loader.py",
+    "sha256": "d2bd2e448ba2d007c89566bd9ea1e50abe658943a025c7d4918646f8712004fc",
+    "bytes": 4974,
+    "lines": 142,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/skills/loader.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/skills/parser.py",
+    "sha256": "c9740ad66d0ef46d5ecc276fb1022d18ce69473ea92f8d091ade6a4602a4cf92",
+    "bytes": 3087,
+    "lines": 105,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/skills/parser.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/skills/executor.py",
+    "sha256": "1e1d30c42b2d0cdbde4f3386e43bea2f6403a1631c0502ff2b106a1ef6a7367e",
+    "bytes": 4712,
+    "lines": 153,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/skills/executor.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/skills/directory.py",
+    "sha256": "53cbb894a2e9a5559739c71e36df31e75f095a3750f57cf9b88e24fbcf145a46",
+    "bytes": 4133,
+    "lines": 140,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/skills/directory.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/tools/load_skill.py",
+    "sha256": "45661cd170597ed5bdebe5761a460992b3c3075019a53ecc145caec4a9625890",
+    "bytes": 2298,
+    "lines": 72,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/tools/load_skill.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/tools/agent_tool.py",
+    "sha256": "7e798edf030de0e5ceef0148384dbe9808588ee94eb9fd7faa5b31809b7c0d7e",
+    "bytes": 34227,
+    "lines": 867,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/tools/agent_tool.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/agent.py",
+    "sha256": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "bytes": 59303,
+    "lines": 1576,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/agent.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/app.py",
+    "sha256": "789ea901345c239cac645a4ebdb46aeed59d97c77a1afad211b960889b064b70",
+    "bytes": 80118,
+    "lines": 2152,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/app.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/context/manager.py",
+    "sha256": "eeab6dc62be4dab1ce167828c47b8fe3d8c027186c8624aca696c19c32d04bee",
+    "bytes": 41040,
+    "lines": 1095,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/context/manager.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/runtime/context.py",
+    "sha256": "00a38388e00dc02a5a4766283e74a86a8f835512f071455d92b3fbd470062f11",
+    "bytes": 2175,
+    "lines": 75,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/runtime/context.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/runtime/spawn.py",
+    "sha256": "254abe117808cc18e7a06e0bb1e1e3c0e87afacff2b4a28e0976d08fe6263930",
+    "bytes": 1564,
+    "lines": 47,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/runtime/spawn.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/runtime/recover.py",
+    "sha256": "9fc6dbf07ec8fa9219f21b3fd0b07e66b24fee92db9c9e2d0a25fd29615cc801",
+    "bytes": 2982,
+    "lines": 85,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/runtime/recover.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/worktree/manager.py",
+    "sha256": "2dab220d35cb43683e46bbe2521488d521afa3e06435e852aeeead9d8d1d8b09",
+    "bytes": 25131,
+    "lines": 611,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/worktree/manager.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/hooks/events.py",
+    "sha256": "dd64ca8c45343d91ac7a0b34721b70473f7e5210f3aecd29846c77926c73ffba",
+    "bytes": 720,
+    "lines": 33,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/hooks/events.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/teams/spawn_inprocess.py",
+    "sha256": "a34a2800938af40eba25d8ed7e6453c5c7954bb51049cf13f82ec6d55915518b",
+    "bytes": 3591,
+    "lines": 121,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/teams/spawn_inprocess.py"
+  },
+  {
+    "repo": "GuoLai806/gcode",
+    "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+    "path": "gcode/agents/fork.py",
+    "sha256": "3d623cccd6d85e333893aec5f0e3fd482e87f98a584842e9b7da3a1c35ea1223",
+    "bytes": 1492,
+    "lines": 50,
+    "source_url": "https://github.com/GuoLai806/gcode/blob/e480127bc1590efadf505aca4a71f86ed95f6742/gcode/agents/fork.py"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "observed_utc": "2026-11-07T07:49:00.732639+00:00",
+  "scope": "recorded business files only, docs/README excluded",
+  "repositories": {
+    "gcode": {
+      "file_count": 208,
+      "business_tree_sha256": "809953c70726ffd4185ffeeaf83f598014fec6cb3768de1d8655b284e3b3c1a3",
+      "changed_recorded_business_files": [],
+      "matches_before": true,
+      "head_before_document_sync": "e480127bc1590efadf505aca4a71f86ed95f6742"
+    },
+    "law-ai-advisor": {
+      "file_count": 141,
+      "business_tree_sha256": "eb5c97b07938b506c9f022adec2a1eb009423ca8a841cfb8990bc8703c6b34db",
+      "changed_recorded_business_files": [],
+      "matches_before": true,
+      "head_before_document_sync": "dc301bef96a76f38e3b7c28cbc1c1ee1a112d0f0"
+    }
+  }
+}

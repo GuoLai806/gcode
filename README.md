@@ -1,5 +1,11 @@
 # GCode - 终端 AI 编程助手
 
+## bvio OpenViking 与 DeepSeek SuperAgent 调研（2026-11-07）
+
+本轮只读调研，未改业务实现：比较实际 OpenViking 路径并保存 14 个合成边界实验；Agent 参考 DeepSeek SuperAgent 研究原型，建议保留 GCode 执行内核并新增持久任务控制层。企业整体性能胜负尚未验证。
+
+[大白话用户版](docs/development/bvio-superagent-research-20261107/PLAN-FOR-YOU.md) · [开发依据](docs/development/bvio-superagent-research-20261107/PLAN-FOR-AI.md) · [测试协议](docs/development/bvio-superagent-research-20261107/BENCHMARK-PROTOCOL.md)
+
 一个功能丰富、架构清晰的终端 AI 编码助手，从零构建，深度学习 Agent 架构。
 
 ## 本轮工程升级（2026-11-06）

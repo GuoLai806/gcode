@@ -1,0 +1,32 @@
+{
+  "observed_utc": "2026-11-07T07:33:06.528428+00:00",
+  "type": "read-only AST contract audit, not runtime exploitation or end-to-end test",
+  "source_sha256": {
+    "gcode/skills/executor.py": "1e1d30c42b2d0cdbde4f3386e43bea2f6403a1631c0502ff2b106a1ef6a7367e",
+    "gcode/agent.py": "2e6264593d04bd50aec9ce6d48f0917a6b8d819e3cf0b435336492656aed8e10",
+    "gcode/tools/load_skill.py": "45661cd170597ed5bdebe5761a460992b3c3075019a53ecc145caec4a9625890"
+  },
+  "fork_constructor_line": 97,
+  "constructor_argument_names": [
+    "client",
+    "context_window",
+    "max_iterations",
+    "permission_checker",
+    "protocol",
+    "registry",
+    "work_dir"
+  ],
+  "permission_checker_literal_none": true,
+  "shared_token_budget_passed": false,
+  "parent_hooks_passed": false,
+  "full_context_200_character_slice_present": true,
+  "LoadSkill_activates_inline": true,
+  "LoadSkill_reads_mode": false,
+  "not_tested": [
+    "actual provider calls",
+    "actual tool execution",
+    "authorization bypass exploitation",
+    "runtime throughput",
+    "successful framework integration"
+  ]
+}

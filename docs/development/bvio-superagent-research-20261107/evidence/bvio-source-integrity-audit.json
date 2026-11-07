@@ -1,0 +1,16 @@
+{
+  "checked_utc": "2026-11-07T07:34:08.255868+00:00",
+  "enterprise_selected_files": 48,
+  "enterprise_files_changed_since_capture": [],
+  "enterprise_snapshot_source_unchanged": true,
+  "pure_probe_v1_sha256": "f2be6175bba8c6a1fe8165a7f4b4985e4634374acd62546b653b9c8bdb46f90c",
+  "pure_probe_v2_sha256": "767691f1ee7f5094be102c7e0540d2db7cf61ddd8208d27ad65f81e70ee0e7e3",
+  "unique_synthetic_scenarios": 14,
+  "v1_preserved": true,
+  "source_manifest_private_sha256": "98094af3743b2470730084c7a6c6490af69a91645dcaa2ad891c72db98383850",
+  "limitations": [
+    "source integrity checks selected enterprise files only; does not establish actual running service identity",
+    "no git/database/model/service/index operations by this subtask",
+    "v2 includes repeated v1 scenarios, not27 independent tests"
+  ]
+}

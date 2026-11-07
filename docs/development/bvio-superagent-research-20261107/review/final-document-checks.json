@@ -1,0 +1,256 @@
+{
+  "root_markdown_files": 8,
+  "relative_links_checked": 59,
+  "expected_review_placeholder_links": [
+    {
+      "document": "RESEARCH-VALIDATION.md",
+      "target": "REVIEW.md"
+    }
+  ],
+  "local_or_source_range_failures": [],
+  "fixed_commit_source_links_available_locally": 52,
+  "source_links_not_in_local_selected_snapshot": [],
+  "obsolete_or_private_patterns": [],
+  "public_files_scanned": 19,
+  "public_path_or_credential_hits": [],
+  "reference_readonly_list_counts": {
+    "source_hash_checks": 126,
+    "superagent_bounded_search": 43,
+    "document_link_failures": 0,
+    "document_artifacts": 6
+  },
+  "scope": "local file/anchor/line-range and bounded public text checks; no network, installation or runtime; missing local selected sources do not mean remote URL is invalid",
+  "explicit_html_anchors_validated": 18,
+  "source_index_file_sha_checks": [
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "README.md",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "package.json",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "docs/001-domain.md",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/core/model.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/core/ports.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "cordis.patch.yml",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/core/stage.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/store.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/effects.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/outbox.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/executor/dsh.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/sessions.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "docs/003-execution.md",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "tests/core-engine.spec.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/runtime.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/executor/dsh.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/core/engine.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/infra/environment.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/core/memory.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/dsh-superagent-prototype",
+      "source_path": "src/app/passes.ts",
+      "commit": "8c32a9dc5d72c033816c6a8110b37f40cf94fba4",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "docs/architecture.md",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "docs/subsystems/subagent.md",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "packages/subagent/subagent/src/child-agent.ts",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "docs/subsystems/compaction.md",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "docs/subsystems/worktrees.md",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "obra/superpowers",
+      "source_path": "docs/porting-to-a-new-harness.md",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "sha256_matches": true
+    },
+    {
+      "repository": "obra/superpowers",
+      "source_path": ".pi/extensions/superpowers.ts",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "sha256_matches": true
+    },
+    {
+      "repository": "obra/superpowers",
+      "source_path": "skills/subagent-driven-development/SKILL.md",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "sha256_matches": true
+    },
+    {
+      "repository": "obra/superpowers",
+      "source_path": "skills/verification-before-completion/SKILL.md",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "packages/workflow/tool-workflow/README.md",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/skills/loader.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/agent.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/skills/executor.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/tools/load_skill.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/tools/agent_tool.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/context/manager.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "GuoLai806/gcode",
+      "source_path": "gcode/worktree/manager.py",
+      "commit": "e480127bc1590efadf505aca4a71f86ed95f6742",
+      "sha256_matches": true
+    },
+    {
+      "repository": "deepseek-ai/deepseek-harness",
+      "source_path": "python/sdk/src/deepseek_harness/api.py",
+      "commit": "fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159",
+      "sha256_matches": true
+    }
+  ],
+  "source_index_hash_mismatches": 0,
+  "passed": true
+}

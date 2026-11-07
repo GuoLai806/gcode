@@ -1,0 +1,43 @@
+{
+  "status": "complete_writes_stopped",
+  "recorded_at_utc": "2026-11-07T08:01:38.911380+00:00",
+  "findings_closed": [
+    "R-1",
+    "R-2"
+  ],
+  "open_determined_findings": 0,
+  "authority_subject_files": 19,
+  "authority_hashes_still_match": true,
+  "review_artifacts": {
+    "PLAN-FOR-AI.md": {
+      "sha256": "db165e3f440aac667bb6ca52eb11284d461900bae8201bb9fe4f59906542be82",
+      "bytes": 2897
+    },
+    "PLAN-FOR-YOU.md": {
+      "sha256": "5d7038467bf6f7437b7b47d46d5ec61a0c1641192d09872edf356fbb378b06dc",
+      "bytes": 1194
+    },
+    "REVIEW.md": {
+      "sha256": "2ab4cc9ee95124940483307fe827e8f4ed703f168d76d19ff80120d558e37596",
+      "bytes": 9981
+    },
+    "SUBJECT-HASHES.json": {
+      "sha256": "9931b10c9af6fe02b2aff201c5c914e3070c8d23f71c90edc398cb0df84dadaa",
+      "bytes": 3019
+    },
+    "ast-recomputed.json": {
+      "sha256": "5f87e7712988d035e214891bcb8800b95821da51b10b27f4432d2f3dc0d2d142",
+      "bytes": 1145
+    },
+    "final-document-checks.json": {
+      "sha256": "1cad14b5216f3e8e0649ad46ecd70093cfe2066f9d887b404321d0d5c730df60",
+      "bytes": 8647
+    },
+    "source-and-experiment-checks-v1.json": {
+      "sha256": "a9e264f639752fa6d2b5b5a88849e4f1d8913ceb2a14e5c186df13b0769b1e32",
+      "bytes": 1216
+    }
+  },
+  "scope": "independent documentation and fixed source review only; no private JS probe reexecution, business edits, Git, service, DB, model, installation or external operation; public AST parse rerun; main agent owns fixes, archive and remote receipt",
+  "next_owner": "main agent"
+}

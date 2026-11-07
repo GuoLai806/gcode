@@ -1,0 +1,183 @@
+{
+  "started_or_finished_utc": "2026-11-07T07:31:32.261Z",
+  "runtime": "v26.4.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "type": "deterministic pure-function probes on actual imported enterprise functions",
+  "data": "synthetic independent fixtures; no enterprise corpus",
+  "not_tested": [
+    "quality on SciFact",
+    "real model and embedding",
+    "actual OpenViking network/search",
+    "end-to-end waiting",
+    "throughput/RSS/CPU",
+    "live update and restart"
+  ],
+  "pass_count": 14,
+  "probe_count": 14,
+  "results": [
+    {
+      "id": "P01",
+      "scope": "preview quota",
+      "status": "observed",
+      "budget_body_chars": 10,
+      "actual_body_chars": 10,
+      "lengths": [
+        8,
+        2
+      ],
+      "assertion_passed": true
+    },
+    {
+      "id": "P02",
+      "scope": "preview loss",
+      "status": "observed",
+      "source_body_chars": 1216,
+      "preview_body_chars": 800,
+      "condition_present_in_source": true,
+      "condition_present_in_preview": false,
+      "truncated": true,
+      "next_read_hint": true,
+      "assertion_passed": true
+    },
+    {
+      "id": "P03",
+      "scope": "preview envelope",
+      "status": "observed",
+      "configured_body_budget": 100,
+      "actual_body_chars": 100,
+      "serialized_result_chars": 1966,
+      "includes_title_uri_and_notice": true,
+      "assertion_passed": true
+    },
+    {
+      "id": "P04",
+      "scope": "merged preview",
+      "status": "observed",
+      "result_count": 1,
+      "content_chars": 455,
+      "sources": [
+        "semantic",
+        "keyword"
+      ],
+      "semantic_visible": true,
+      "keyword_visible": true,
+      "keyword_score": 0.8,
+      "assertion_passed": true
+    },
+    {
+      "id": "P05",
+      "scope": "limit semantics",
+      "status": "observed",
+      "requested_branch_limit": 2,
+      "result_count": 4,
+      "ordered_uris": [
+        "viking://resources/synthetic/s1.md",
+        "viking://resources/synthetic/s2.md",
+        "viking://resources/synthetic/k1.md",
+        "viking://resources/synthetic/k2.md"
+      ],
+      "keyword_scores": [
+        null,
+        null
+      ],
+      "assertion_passed": true,
+      "interpretation": "limit bounds each candidate pool; it is not a combined result count cap"
+    },
+    {
+      "id": "P06",
+      "scope": "oversized-first candidate",
+      "status": "observed",
+      "body_budget": 100,
+      "later_keyword_would_fit": true,
+      "result_count": 0,
+      "assertion_passed": true,
+      "interpretation": "selection stops at oversized first preview; no skip-ahead"
+    },
+    {
+      "id": "P07",
+      "scope": "oversized-middle candidate",
+      "status": "observed",
+      "body_budget": 100,
+      "result_count": 2,
+      "ordered_uris": [
+        "viking://resources/synthetic/s1.md",
+        "viking://resources/synthetic/k1.md"
+      ],
+      "omitted_later_small_keyword": true,
+      "assertion_passed": true
+    },
+    {
+      "id": "P08",
+      "scope": "literal keywords",
+      "status": "observed",
+      "pattern": "A\\.B|x\\+y",
+      "matches_literal": true,
+      "does_not_match_regex_wildcard": true,
+      "assertion_passed": true
+    },
+    {
+      "id": "P09",
+      "scope": "time-decay policy",
+      "status": "observed",
+      "automatic_default": "30d",
+      "manual_default": "undefined",
+      "explicit_null": null,
+      "explicit_zero": "0",
+      "explicit_period": "5d",
+      "assertion_passed": true
+    },
+    {
+      "id": "P10",
+      "scope": "time-decay aliases",
+      "status": "observed",
+      "conflicting_alias_error": {
+        "code": "invalid_query",
+        "status": 400
+      },
+      "assertion_passed": true
+    },
+    {
+      "id": "P11",
+      "scope": "relative time freeze",
+      "status": "observed",
+      "options": {
+        "since": "2026-10-31T00:00:00.000Z",
+        "until": "2026-11-06T00:00:00.000Z"
+      },
+      "assertion_passed": true
+    },
+    {
+      "id": "P12",
+      "scope": "tag normalization",
+      "status": "observed",
+      "normalized_duplicate_error": {
+        "code": "invalid_query",
+        "status": 400
+      },
+      "assertion_passed": true
+    },
+    {
+      "id": "P13",
+      "scope": "Unicode budget unit",
+      "status": "observed",
+      "budget_units": 3,
+      "js_utf16_length": 3,
+      "unicode_codepoints": 2,
+      "contains_lone_surrogate": true,
+      "assertion_passed": true,
+      "interpretation": "JS .length/.slice counts UTF-16 code units, not tokenizer tokens or Unicode characters"
+    },
+    {
+      "id": "P14",
+      "scope": "adapter-compatible preview envelope",
+      "status": "observed",
+      "title_chars": 120,
+      "configured_body_budget": 100,
+      "actual_body_chars": 100,
+      "serialized_result_chars": 588,
+      "assertion_passed": true,
+      "interpretation": "synthetic direct-function fixture with title respecting adapter 120-unit cap; serialized chars are not actual model tokens"
+    }
+  ]
+}

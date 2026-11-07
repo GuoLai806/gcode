@@ -1,0 +1,38 @@
+{
+  "checks": {
+    "enterprise48": true,
+    "private_manifest_sha": true,
+    "superagent43": true,
+    "raw_probe_hashes": true,
+    "raw_vs_private_outputs": true,
+    "14_unique_probes": true,
+    "prior13_preserved": true,
+    "P02_input_and_truncation": true,
+    "P03_P14_input_limits": true,
+    "business_recorded_sources_unchanged": true,
+    "public_AST_script_recomputes": true
+  },
+  "passed": true,
+  "enterprise_selected_files": 48,
+  "enterprise_changed_files": 0,
+  "superagent_source_files": 43,
+  "superagent_hash_mismatches": [],
+  "business": [
+    {
+      "repository": "gcode",
+      "recorded_files": 208,
+      "changed_files": 0,
+      "after_checks_match": true,
+      "before_after_tree_hash_equal": true
+    },
+    {
+      "repository": "law-ai-advisor",
+      "recorded_files": 141,
+      "changed_files": 0,
+      "after_checks_match": true,
+      "before_after_tree_hash_equal": true
+    }
+  ],
+  "probe_reexecution": "private JS probes not rerun; original scripts/actual function control flow and recorded hashes reviewed; only public AST script rerun",
+  "scope": "no import Agent, Git, service, DB, model, installation or external operation; private paths and source not copied"
+}
